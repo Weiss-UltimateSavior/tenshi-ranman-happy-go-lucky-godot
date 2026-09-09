@@ -2,15 +2,21 @@ extends Control
 
 signal action_requested(action: String)
 
-const SCENARIO_ROOT := AppConfig.GAME_ROOT + "/Extractor_Output/scn"
+# The original Extractor_Output/scn workspace is shipped inside assets/scn.
+const SCENARIO_ROOT := AppConfig.GAME_ROOT + "/scn"
 const RESTORED_ROOT := AppConfig.RESTORED_ROOT
 const ENTRY_STORAGE := "st01_01.ks"
 const ENTRY_TARGET := "*0408"
 const WINDOW_BASE := "res://assets/ui/exported/window/layers/5950.png"
 const QUICKMENU_LAYER_DIR := "res://assets/ui/exported/quickmenu/layers/"
 const VOICEBAR_LAYER_DIR := "res://assets/ui/exported/voicebar/layers/"
-const TLG2PNG := AppConfig.CODEX_WORK_ROOT + "/tlg2png/Tlg2Png.exe"
-const CACHE_ROOT := AppConfig.CODEX_WORK_ROOT + "/godot_cache"
+# TLG->PNG converter: the Windows environment uses the historical
+# Tlg2Png.exe from the Codex workspace; other platforms build the
+# cross-platform tools/tlg2png C tool (see docs/tlg2png.md).
+const TLG2PNG_WIN := AppConfig.CODEX_WORK_ROOT + "/tlg2png/Tlg2Png.exe"
+const TLG2PNG_NATIVE := "res://tools/tlg2png/tlg2png"
+# TLG conversion output is a per-machine cache, so it stays in user://.
+const CACHE_ROOT := "user://godot_cache"
 const UI_SCALE := Vector2(1280.0 / 1920.0, 720.0 / 1440.0)
 const HUD_SCALE := 1280.0 / 1920.0
 const SOURCE_SCALE := 1280.0 / 1920.0
@@ -27,7 +33,9 @@ const KAG_CAMERA_OFFSET_Z := -100.0
 # renderer; ypos already aligned at the same reference.
 const SLAYER_STAGE_ORIGIN_SOURCE := Vector2(842.0, 487.0)
 const STAND_PSD_PAGE_VERTICAL_OFFSET := 139.0
-const STAND_PBD_JSON_ROOT := AppConfig.CODEX_WORK_ROOT + "/pbd_json"
+# PBD layer JSON is regenerated on demand from the shipped .pbd payloads
+# (qa/pbd_json_test); the Windows Codex workspace is only a fallback.
+const STAND_PBD_JSON_ROOT := "user://pbd_json"
 const PRELOAD_TEXTURES_PER_FRAME := 16
 const STAND_DRESS_MOJIBAKE := {
 	"蛻ｶ譛肴丼": "制服春",
@@ -3532,6 +3540,17 @@ func _stand_part_paths(character_name: String, prefix: String, dress_index: int,
 	return {"source": source, "output_dir": output_dir, "target": target}
 
 
+func _tlg2png_path() -> String:
+	# Each developer keeps their own converter: the historical Windows exe in
+	# the Codex workspace, or the built native binary from tools/tlg2png.
+	var native := ProjectSettings.globalize_path(TLG2PNG_NATIVE)
+	if OS.get_name() != "Windows" and FileAccess.file_exists(native):
+		return native
+	if FileAccess.file_exists(TLG2PNG_WIN):
+		return TLG2PNG_WIN
+	return ""
+
+
 func _convert_tlg_to_png(source: String) -> String:
 	var output_dir := CACHE_ROOT + "/fgimage/" + source.get_base_dir().get_file()
 	var target := output_dir + "/" + source.get_file().get_basename() + ".png"
@@ -3539,8 +3558,10 @@ func _convert_tlg_to_png(source: String) -> String:
 		return target
 	if FileAccess.file_exists(target):
 		DirAccess.remove_absolute(target)
-	if not FileAccess.file_exists(TLG2PNG):
-		push_warning("TLG converter not found: " + TLG2PNG)
+	var converter := _tlg2png_path()
+	if converter == "":
+		# Encrypted (TJS/4s0) and converter-less environments resolve here;
+		# stand parts degrade to a missing layer instead of aborting playback.
 		return ""
 	DirAccess.make_dir_recursive_absolute(output_dir)
 	_queue_preload_job({"type": "tlg", "source": source, "target": target, "output_dir": output_dir})
@@ -3626,9 +3647,10 @@ func _process_preload_job(job: Dictionary) -> void:
 		"tlg_dir":
 			var source_dir := str(job.get("source_dir", ""))
 			var output_dir := str(job.get("output_dir", ""))
-			if source_dir != "" and output_dir != "" and DirAccess.dir_exists_absolute(source_dir) and FileAccess.file_exists(TLG2PNG):
+			var converter := _tlg2png_path()
+			if source_dir != "" and output_dir != "" and DirAccess.dir_exists_absolute(source_dir) and converter != "":
 				DirAccess.make_dir_recursive_absolute(output_dir)
-				OS.execute(TLG2PNG, [source_dir, output_dir], [])
+				OS.execute(converter, [source_dir, output_dir], [])
 				var marker := FileAccess.open(output_dir + "/.complete", FileAccess.WRITE)
 				if marker != null:
 					marker.store_string(Time.get_datetime_string_from_system())
@@ -3643,9 +3665,10 @@ func _process_preload_job(job: Dictionary) -> void:
 				return
 			if FileAccess.file_exists(target):
 				DirAccess.remove_absolute(target)
-			if source != "" and output_dir != "" and FileAccess.file_exists(TLG2PNG):
+			var tlg_converter := _tlg2png_path()
+			if source != "" and output_dir != "" and tlg_converter != "":
 				DirAccess.make_dir_recursive_absolute(output_dir)
-				OS.execute(TLG2PNG, [source, output_dir], [])
+				OS.execute(tlg_converter, [source, output_dir], [])
 			if _is_ready_file(target):
 				_queue_preload_job({"type": "image", "path": target})
 		"image":
@@ -3656,6 +3679,19 @@ func _process_preload_job(job: Dictionary) -> void:
 			var already_loaded := preloaded_images.has(path)
 			preload_mutex.unlock()
 			if already_loaded:
+				return
+			if path.begins_with("res://"):
+				# Loose Image.load() cannot reach packed resources once the PCK
+				# is embedded, so imported project images are read through the
+				# resource system instead. The marker suffix lets the drain pass
+				# distinguish raw Image payloads from ready textures.
+				var packed := ResourceLoader.load(path) as Texture2D
+				if packed == null:
+					return
+				preload_mutex.lock()
+				if not preloaded_images.has(path):
+					preloaded_images[path] = packed
+				preload_mutex.unlock()
 				return
 			var image := Image.new()
 			if image.load(path) == OK:
@@ -3693,8 +3729,14 @@ func _drain_preloaded_assets() -> void:
 	preloaded_scenarios = {}
 	preload_mutex.unlock()
 	for path in images.keys():
-		if not texture_cache.has(path):
-			texture_cache[path] = ImageTexture.create_from_image(images[path])
+		if texture_cache.has(path):
+			continue
+		var payload: Variant = images[path]
+		if payload is Texture2D:
+			# Packed res:// resources arrive as ready textures from the worker.
+			texture_cache[path] = payload
+		else:
+			texture_cache[path] = ImageTexture.create_from_image(payload)
 	for path in streams.keys():
 		if not stream_cache.has(path):
 			stream_cache[path] = streams[path]

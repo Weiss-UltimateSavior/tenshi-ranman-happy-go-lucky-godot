@@ -1,12 +1,23 @@
 # Godot 4 cache
 .godot/
 
-# Original game assets (huge, ~7 GB; not suitable for git)
+# Original game assets (huge, ~20 GB extracted; not suitable for git)
+# Loaded locally from the split 7z archives (天神乱漫 Happy GO Lucky!!_godot.7z.*).
 assets/
 
-# QA-generated screenshots / logs / reports
+# QA-generated screenshots / logs / reports / traces (part of the archives too)
 qa/
 
 # Logs and executables
 *.log
 *.exe
+*.exe.import
+
+# Locally built native tools (each developer builds their own)
+tools/tlg2png/tlg2png
+tools/tlg2png/tlg2png.dSYM/
+
+# Exported game build artifacts
+天神乱漫 Happy Go Lucky!! Godot.pck
+天神乱漫 Happy Go Lucky!! Godot.zip
+*.tmp
