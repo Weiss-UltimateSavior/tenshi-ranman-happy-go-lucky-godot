@@ -43,10 +43,14 @@ cc -O2 -o tlg2png tlg2png.c
 
 ## 已知限制
 
-- `TJS/4s0` 魔数的文件(krkr2 时代的 TJS 结构数据,约 64 个 `.tlg`、若干
-  `.pbd`)不是图像,本工具跳过。立绘合成所需的 `pbd_json` 图层元数据在
-  Windows 环境来自游戏运行时 dump(`tools/dump_one_pbd.tjs`),跨平台复刻
-  属于立绘管线的后续工作。
+- `TJS/4s0` 魔数的文件(柚子社自有序列化容器,约 64 个 `.tlg`、若干 `.pbd`)
+  不是图像,本工具跳过。~~立绘合成所需的 `pbd_json` 图层元数据在 Windows
+  环境来自游戏运行时 dump(`tools/dump_one_pbd.tjs`),跨平台复刻属于立绘
+  管线的后续工作。~~ **已解决**:根据《【Godot】天神乱漫迁移任务经验总结》
+  1.5 节,现成工具 `krkr_pbd2json\pbd2json.exe` 可完整解析 `TJS/4s0`
+  (借原引擎 `Scripts.loadDataPack()`),64/64 个 PBD 已全部导出为含
+  `layer_id/name/left/top/width/height` 的 JSON。待办:把该产物(64 个
+  JSON,体积极小)入库到 `assets/` 约定目录,macOS 立绘合成立即可用。
 - TLG6 的 Golomb/滤波解码为标量实现(无 SSE),大图转换速度足够离线使用。
 
 ## 验证记录

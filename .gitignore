@@ -21,3 +21,4 @@ tools/tlg2png/tlg2png.dSYM/
 天神乱漫 Happy Go Lucky!! Godot.pck
 天神乱漫 Happy Go Lucky!! Godot.zip
 *.tmp
+.DS_Store
