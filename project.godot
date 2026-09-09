@@ -1,0 +1,29 @@
+; Engine configuration file.
+; This project is a clean Godot migration shell for 天神乱漫 Happy Go Lucky!!.
+
+config_version=5
+
+[application]
+
+config/name="天神乱漫 Happy Go Lucky!! Godot"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.6")
+config/auto_accept_quit=false
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[autoload]
+
+AppConfig="*res://scripts/autoload/app_config.gd"
+ResourceIndex="*res://scripts/autoload/resource_index.gd"
+AudioManager="*res://scripts/autoload/audio_manager.gd"
+SystemSettings="*res://scripts/autoload/system_settings.gd"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"

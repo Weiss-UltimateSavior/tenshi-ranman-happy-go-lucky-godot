@@ -1,0 +1,12 @@
+# Godot 4 cache
+.godot/
+
+# Original game assets (huge, ~7 GB; not suitable for git)
+assets/
+
+# QA-generated screenshots / logs / reports
+qa/
+
+# Logs and executables
+*.log
+*.exe

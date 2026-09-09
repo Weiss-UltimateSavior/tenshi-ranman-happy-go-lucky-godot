@@ -1,0 +1,15 @@
+// Temporary PBD probe for the original Kirikiri runtime.
+// Run with: tenshin_hgl.exe -startup=<this file>
+
+var target = "fgimage/\u4F50\u5948/\u4F50\u5948_\u30DD\u30FC\u30BAa_1.pbd";
+var output = "F:/Galgame/TenshinPbdProbe/sana_posea_1.tjs";
+
+try {
+	var data = Scripts.loadDataPack(target);
+	data.saveStruct(output);
+	System.exit(0);
+} catch (e) {
+	var err = %[ target: target, message: "" + e ];
+	err.saveStruct("F:/Galgame/TenshinPbdProbe/error.tjs");
+	System.exit(1);
+}
