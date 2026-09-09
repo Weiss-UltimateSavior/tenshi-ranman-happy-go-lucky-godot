@@ -58,11 +58,14 @@
 
 ## 阶段 5：VN 运行时
 
-- [ ] 定义 Godot 中间剧情格式。
+- [ ] 定义 Godot 中间剧情格式。（当前直接读取 SCN 反编译 JSON；独立中间格式仍未定义）
 - [ ] 从 SCN JSON 转换剧情文本、角色、立绘、CG、BGM、SE、voice、choice。
+- [x] 实现选择支与分支引擎：解析 `scenes[].selects`（对话/地图两型 UI、eval 过滤、selidx 排序）、`SetBranchFlags/CheckBranchFlags` 标志状态机（`tools/compile_branch_flags.py` 编译 `scnchartdata.tjs` → `branch_flags.json`）、`nexts[].eval` 分支求值、跨文件跳转与 gameend 返回标题（`docs/plan/PLAN_P0_BRANCH_ENGINE.md`）。
+- [x] 实现存档 v2：branch_flags / selection_history / last_branch_decision / 挂起选择随档恢复，旧档零迁移。
+- [x] 分支轨迹基线：`qa/traces/godot_branch_trace.json`（st04_04 佐奈选择 → st04_05 acc_san 判定），export/verify 支持多基线参数。
 - [ ] 实现文本框、名字框、打字机、语音同步。
 - [ ] 实现 Ctrl 快进、自动播放、回看、跳过已读。
-- [ ] 实现存档、读档、章节状态、CG/BGM 解锁。
+- [ ] 实现存档、读档、章节状态、CG/BGM 解锁。（存读档与回放恢复已可用；章节/解锁状态未接）
 
 ## 阶段 6：完整内容接入
 

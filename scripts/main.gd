@@ -413,6 +413,10 @@ func _on_static_ui_action(action: String) -> void:
 			show_static_ui_screen("extra_stand")
 		"jump":
 			show_story_screen()
+		"gameend":
+			# Scenario-finale edge (e.g. ru05_04 → start.ks *gameend_title):
+			# the story runtime stops and control returns to the title.
+			show_title_screen()
 		"top", "pageup", "pagedown", "end":
 			var backlog := _backlog_screen()
 			if backlog != null:

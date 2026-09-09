@@ -1,15 +1,29 @@
 extends SceneTree
 
-const STORAGE := "st01_01.ks"
-const TARGET := "*0408"
-const REFERENCE := "res://qa/traces/godot_opening_trace.json"
+## Story trace verifier. Replays a route and compares every structural frame
+## against a committed baseline. Supports multiple baselines via user args
+## (docs/plan/PLAN_P0_BRANCH_ENGINE.md step 6):
+##   --reference=res://qa/traces/godot_opening_trace.json
+##   --storage=st01_01.ks --target=*0408 --select-index=-1
+## The --select-index injection mirrors qa_export_story_trace.gd so selection
+## baselines replay deterministically without real clicks.
+
+const DEFAULT_STORAGE := "st01_01.ks"
+const DEFAULT_TARGET := "*0408"
+const DEFAULT_REFERENCE := "res://qa/traces/godot_opening_trace.json"
 
 
 func _initialize() -> void:
-	var reference_path := ProjectSettings.globalize_path(REFERENCE)
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(reference_path))
+	var args := _user_args()
+	var storage: String = args.get("storage", DEFAULT_STORAGE)
+	var target: String = args.get("target", DEFAULT_TARGET)
+	var reference_path: String = args.get("reference", DEFAULT_REFERENCE)
+	var select_index := int(args.get("select-index", "-1"))
+
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(
+		ProjectSettings.globalize_path(reference_path)))
 	if typeof(parsed) != TYPE_DICTIONARY:
-		_fail("Story trace reference is missing or invalid")
+		_fail("Story trace reference is missing or invalid: " + reference_path)
 		return
 	var expected_frames: Array = Dictionary(parsed).get("frames", [])
 	var main_scene: Node = load("res://scenes/main.tscn").instantiate()
@@ -22,8 +36,9 @@ func _initialize() -> void:
 		_fail("Could not create StoryPlayer for trace verification")
 		return
 	story.set_trace_instant_mode(true)
-	story.start(STORAGE, TARGET)
+	story.start(storage, target)
 	await process_frame
+	var injected := false
 	for index in range(expected_frames.size()):
 		var actual: Dictionary = story.export_trace_frame()
 		var expected: Dictionary = Dictionary(expected_frames[index])
@@ -31,9 +46,12 @@ func _initialize() -> void:
 			_fail("Story trace mismatch at frame %d cursor=%s difference=%s" % [index, JSON.stringify(actual.get("cursor", {})), _first_difference(_comparable_frame(expected), _comparable_frame(actual))])
 			return
 		if index + 1 < expected_frames.size():
+			if not injected and select_index >= 0 and story.selection_pending:
+				story.apply_selection(select_index)
+				injected = true
 			story.advance()
 			await process_frame
-	print("OK: ", expected_frames.size(), " story trace frames match the opening baseline")
+	print("OK: ", expected_frames.size(), " story trace frames match baseline ", reference_path)
 	quit(0)
 
 
@@ -89,6 +107,18 @@ func _first_difference(expected: Variant, actual: Variant, path: String = "root"
 	if expected != actual:
 		return path + " expected=" + str(expected) + " actual=" + str(actual)
 	return ""
+
+
+func _user_args() -> Dictionary:
+	var result := {}
+	for arg in OS.get_cmdline_user_args():
+		if not arg.begins_with("--"):
+			continue
+		var body := arg.trim_prefix("--")
+		var eq := body.find("=")
+		if eq >= 0:
+			result[body.substr(0, eq)] = body.substr(eq + 1)
+	return result
 
 
 func _find_story(main_scene: Node) -> Node:
