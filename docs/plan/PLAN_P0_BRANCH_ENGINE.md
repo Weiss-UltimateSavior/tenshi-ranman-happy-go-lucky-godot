@@ -81,61 +81,61 @@
 
 ### 步骤 1:标志位状态机 `BranchFlags`(~80 行,纯逻辑,先行合入)
 
-- [ ] 新建 `scripts/story/branch_flags.gd`(RefCounted,非 autoload,由
+- [x] 新建 `scripts/story/branch_flags.gd`(RefCounted,非 autoload,由
       StoryPlayer 持有),字段:
   - `scene_values: Dictionary` — `"ST04_04*0429_select" -> int`(选择点取值)
   - `flag_cache: Dictionary` — 展开计算缓存
-- [ ] 启动时解析 `assets/main/scnchartdata.tjs`:它是 TJS 源文本但结构规整,
+- [x] 启动时解析 `assets/main/scnchartdata.tjs`:它是 TJS 源文本但结构规整,
       用正则抽取 `"flags"` 段的 `key => [[scene, value, weight], ...]` 条目
       (不需完整 TJS 解析器;写 `tools/compile_branch_flags.py` 把它一次性
       编译成 `assets/ui/compiled/branch_flags.json` 入库,运行时读 JSON,
       与 UI 编译管线同一模式)。
-- [ ] API:
+- [x] API:
   - `set_branch(key: String, value: int)`
   - `check(expr: String) -> bool`:解析 `name (&& name)*`;每个 name 取
     `Σ(scene_values[tag]==v ? w : 0) > 0`(与 UpdateBranchFlags 对齐,当前
     数据 weight 恒为 1)
-- [ ] 验证:单测脚本 `tools/qa_branch_flags.gd` 覆盖:单标志、`&&` 链、
+- [x] 验证:单测脚本 `tools/qa_branch_flags.gd` 覆盖:单标志、`&&` 链、
       未知 name 视为 false、重复 Set 覆盖语义。
 
 ### 步骤 2:nexts 求值与跨文件跳转(~60 行)
 
-- [ ] `_jump_to_next_scene_or_storage()` 重写:
+- [x] `_jump_to_next_scene_or_storage()` 重写:
   1. 顺序遍历 nexts,跳过 `type != 0`;
   2. 有 `eval` → `BranchFlags.check(eval)`,为假继续;
   3. 命中项:`storage` 缺省 = 当前文件(同文件 `_select_scene`);
      跨文件 `_load_scenario()` + `_select_scene()`;
   4. 全部落空 → `_show_error`(保留现有错误通道,不静默)。
-- [ ] `_jump_to_next_storage()` 真实现:场景无 nexts 时,顺序扫描同文件
+- [x] `_jump_to_next_storage()` 真实现:场景无 nexts 时,顺序扫描同文件
       之后 label 的首个可跳项;找不到才报"End of playable scenario"。
       (现有 75 文件全部经 nexts 链接,此函数只是防御性兜底。)
-- [ ] **不实现**任意 `exp` 求值:遇到非 `CheckBranchFlags(...)`/非 error
+- [x] **不实现**任意 `exp` 求值:遇到非 `CheckBranchFlags(...)`/非 error
       哨兵的 `exp`(当前数据里仅 `ru05_04 → start.ks *gameend_title` 一处
       回标题),硬编码为"跳回标题"并在 trace 中记录 `gameend` 事件。
-- [ ] 验证:`tools/qa_story_nexts_eval.gd` —— 从 `st04_05 *0429_branch2`
+- [x] 验证:`tools/qa_story_nexts_eval.gd` —— 从 `st04_05 *0429_branch2`
       分别注入 `ST04_04*0429_select=1/2/3`,断言落到
       `*0429_sak/*0429_san/*0429_ano` 三条不同路径。
 
 ### 步骤 3:选择支数据通路(~50 行)
 
-- [ ] `scene.get("selects")` 非空时,`_continue_until_text()` 在 scene 的
+- [x] `scene.get("selects")` 非空时,`_continue_until_text()` 在 scene 的
       行播放完之后**不自动跳转**,改为:
   1. 过滤:有 `eval` 的选项先过 `BranchFlags.check`;
   2. 按 `selidx` 排序;
   3. `_pending_selects = 可用选项`,进入等待态(复用 `_request_action_wait()`
      的等待机制,使 skip/auto 在选择挂起时自动暂停——与原版一致);
   4. `action_requested.emit("select_show")`。
-- [ ] 选择后执行:`BranchFlags.set_branch(tag 解析, exp 里的数值)` →
+- [x] 选择后执行:`BranchFlags.set_branch(tag 解析, exp 里的数值)` →
       按 `storage/target` 跳转(复用步骤 2 的跳转函数);记录
       `selection_history`(见步骤 5)。
-- [ ] `exp` 解析:正则 `SetBranchFlags\("([^"]+)",\s*(\d+)\)`,不引入
+- [x] `exp` 解析:正则 `SetBranchFlags\("([^"]+)",\s*(\d+)\)`,不引入
       表达式求值器;解析失败按"无操作选项"处理并 push_warning。
-- [ ] 验证:`tools/qa_story_selects.gd` —— st02_03 地图选择 7 项按 selidx
+- [x] 验证:`tools/qa_story_selects.gd` —— st02_03 地图选择 7 项按 selidx
       排列;st04_04 对话选择 4 项;选中后 flags 与落点正确。
 
 ### 步骤 4:选择 UI(地图 / 对话两型,~180 行)
 
-- [ ] 新建 `scripts/ui/select_screen.gd`(继承 `hgl_ui_screen.gd`),从
+- [x] 新建 `scripts/ui/select_screen.gd`(继承 `hgl_ui_screen.gd`),从
       compiled JSON 取图层;首版允许用原版按钮图层 + 代码布局:
   - **对话选择**(有 `render`/`text`):复用 `dialog.json` 的按钮三态图层
     (exit_confirm_dialog.gd 已验证该图层链),竖排 `selidx` 顺序,
@@ -143,35 +143,35 @@
   - **地图选择**(`_type == 2`):`selectInfo._init.bg` 作底图(evimage,
     走 `_resolve_image("evimage", bg)`),选项按 `name` + `place` 渲染;
     坐标首版用 `selidx` 均布占位,**在 P3 再对照原版 `mapsel.pimg` 校准**。
-- [ ] 输入:左键选择、右键无操作(原版选择中不可取消);Esc 忽略。
-- [ ] 与 backlog/skip 的互斥:选择挂起时 `_set_message_window_hidden(false)`,
+- [x] 输入:左键选择、右键无操作(原版选择中不可取消);Esc 忽略。
+- [x] 与 backlog/skip 的互斥:选择挂起时 `_set_message_window_hidden(false)`,
       禁用 Ctrl 快进与自动播放(`_process` 里 `_pending_selects` 判定)。
-- [ ] 验证:`tools/qa_capture_select_screens.gd` 截图两种选择界面,
+- [x] 验证:`tools/qa_capture_select_screens.gd` 截图两种选择界面,
       人工比对原版截图(截图来源:游戏 OR 原版 `qa/reference/`,任务清单
       里已有"获取原版截图"条目,此处合并推进)。
 
 ### 步骤 5:存档与回放(~40 行)
 
-- [ ] `export_save_state()` 新增:
+- [x] `export_save_state()` 新增:
   - `"branch_flags": scene_values`(整型字典,直接 JSON 安全)
   - `"selection_history": [{storage, target, tag, selidx}]`(流程图/回想用)
   - `"pending_selects"`:若正挂起选择,保存选项列表;读档后重弹。
-- [ ] `import_save_state()` 恢复三者;`_clear_runtime_story_state()` 清空
+- [x] `import_save_state()` 恢复三者;`_clear_runtime_story_state()` 清空
       (新游戏)但 `jump_to_history_entry()` 保留主历史(与 backlog 既有
       preserved_history 语义一致)。
-- [ ] **兼容性**:旧存档无新字段 → 默认空字典,不迁移不报错。
+- [x] **兼容性**:旧存档无新字段 → 默认空字典,不迁移不报错。
       `SAVE_FORMAT` 加 `v: 2` 标记。
-- [ ] 验证:在 st04_04 选择"买给佐奈"→ 存档 → 读档 → 分支落点一致;
+- [x] 验证:在 st04_04 选择"买给佐奈"→ 存档 → 读档 → 分支落点一致;
       `tools/qa_saveload_branch.gd` 自动化。
 
 ### 步骤 6:轨迹基线扩展与回归门(~60 行)
 
-- [ ] `tools/qa_export_story_trace.gd` 扩展第二条路线脚本:
+- [x] `tools/qa_export_story_trace.gd` 扩展第二条路线脚本:
       `st01_01 → … → st04_04 选择("佐奈")→ st04_05 分支 → 落点断言`,
       每帧记录新增 `branch_flags` 快照与 `selection` 事件。
-- [ ] 新基线 `qa/traces/godot_branch_trace.json`;`qa_verify_story_trace`
+- [x] 新基线 `qa/traces/godot_branch_trace.json`;`qa_verify_story_trace`
       支持多基线文件参数。
-- [ ] 把"两条 trace + 既有 qa_* 选择性回归"写进 `docs/compatibility_validation.md`
+- [x] 把"两条 trace + 既有 qa_* 选择性回归"写进 `docs/compatibility_validation.md`
       的 Acceptance Sequence,作为后续每个改动的最低门槛。
 
 ## 3. 明确不做(防蔓延)
@@ -217,3 +217,33 @@
 4. 新旧两条 trace 基线全部通过;`qa_branch_flags`/`qa_story_nexts_eval`/
    `qa_story_selects`/`qa_saveload_branch` 全绿。
 5. Windows 环境回归:`--ui-screen`/标题动作/既有存档行为无变化。
+
+---
+
+## 7. 完成记录(2026-09-10)
+
+全部 6 个步骤已实现并通过验证:
+
+| 交付物 | 状态 |
+|---|---|
+| `tools/compile_branch_flags.py` → `assets/ui/compiled/branch_flags.json` | ✅ 41 flag 名 / 42 triples / 7 branch 节点对账通过 |
+| `scripts/story/branch_flags.gd` | ✅ 含 `CheckBranchFlags("...")` 调用串剥壳 |
+| `scripts/ui/select_screen.gd` | ✅ 对话/地图两型;eval 过滤与 selidx 排序经截图与断言验证 |
+| story_player.gd:nexts eval / 跨文件跳转 / selects 挂起 / 存档 v2 / gameend | ✅ 关键修复:跨文件决策"先加载后变更 cursor",避免失败决策污染状态 |
+| `qa_branch_flags` / `qa_story_nexts_eval` / `qa_story_selects` / `qa_saveload_branch` | ✅ 全绿 |
+| 双轨迹基线:opening(32 帧)+ branch(201 帧,st04_04 佐奈选择 → st04_05 acc_san 判定 → 0429_sel.ks 决策) | ✅ 双 verify 通过 |
+| `qa_capture_select_screens.gd` | ✅ 窗口模式截图两型(headless 自动跳过) |
+
+实现中的关键修正(对应计划风险表):
+
+1. `check()` 接收的 eval 是完整调用串 `CheckBranchFlags("...")`,需要剥壳再按
+   `&&` 拆分。
+2. 跨文件决策必须"先 `_load_scenario` 成功再变更 storage/target"——先改后载
+   会让失败决策留下错配状态(storage 指向新文件而 scenario 仍是旧文件),后续
+   推进会在错误的剧本上播放。
+3. `_show_error` 只写消息框不更新 `current_entry`,轨迹终态检测需读实时
+   text_label,否则缺 JSON 路径会以旧台词无限重发决策。
+
+已知边界(与风险表一致):branch2 的落点 0429_sel.ks 的 SCN JSON 尚未导出,
+轨迹以"决策记录 + 显式 Scenario not found"收尾;P1 补齐剩余 218 个 JSON 后
+该路径可继续播放。

@@ -1,5 +1,7 @@
 extends Control
 
+#"st04_04.ks" / "*0429_4"
+
 signal action_requested(action: String)
 
 # The original Extractor_Output/scn workspace is shipped inside assets/scn.
@@ -22,6 +24,8 @@ const HUD_SCALE := 1280.0 / 1920.0
 const SOURCE_SCALE := 1280.0 / 1920.0
 const SOURCE_SCALE_VECTOR := Vector2(SOURCE_SCALE, SOURCE_SCALE)
 const WhiteBallEmitterScene := preload("res://scripts/story/white_ball_emitter.gd")
+const BranchFlags := preload("res://scripts/story/branch_flags.gd")
+const SelectScreen := preload("res://scripts/ui/select_screen.gd")
 # KAGEnvironment converts between a perspective-space z position and z-order
 # with cameraoffsetz=-100. Character layers opt into zorderZoom/zorderMove,
 # so their scale and authored offsets use this derived resolution.
@@ -226,6 +230,16 @@ var current_movie_storage := ""
 var environment_camera_x := 0.0
 var environment_camera_y := 0.0
 var environment_camera_zoom := 100.0
+var branch_flags: BranchFlags
+var selection_pending := false
+var _pending_selects: Array = []
+var _pending_select_info: Dictionary = {}
+var _select_screen: Control = null
+var selection_history: Array = []
+var last_branch_decision: Dictionary = {}
+var last_selection_event: Dictionary = {}
+var game_ended := false
+var _decision_load_failed := false
 var procedural_script_actions: Array[Dictionary] = []
 var script_action_tweens: Array[Tween] = []
 
@@ -235,6 +249,7 @@ func _ready() -> void:
 		SystemSettings.message_appearance_changed.connect(_on_message_appearance_changed)
 	_fit_full_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	branch_flags = BranchFlags.new()
 	_start_preload_thread()
 	_build_layers()
 	AudioManager.stop_bgm()
@@ -252,6 +267,8 @@ func _process(delta: float) -> void:
 	_update_click_glyph(delta)
 	_update_stage_effect_animations(delta)
 	_update_procedural_script_actions(delta)
+	if game_ended:
+		return
 	if backlog_mode:
 		return
 	if _process_script_wait():
@@ -324,6 +341,8 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func advance() -> void:
+	if game_ended:
+		return
 	auto_elapsed = 0.0
 	if _is_script_waiting():
 		return
@@ -800,6 +819,8 @@ func _continue_until_text() -> void:
 		var scenes: Array = scenario.get("scenes", [])
 		if scene_index >= scenes.size():
 			if not _jump_to_next_storage():
+				if game_ended or _decision_load_failed:
+					return
 				_show_error("End of playable scenario.")
 				return
 			continue
@@ -819,33 +840,230 @@ func _continue_until_text() -> void:
 						continue
 					_show_text(entry)
 					return
-		if not _jump_to_next_scene_or_storage(scene):
+		if _scene_requests_selection(scene):
+			return
+		_decision_load_failed = false
+		var jumped := _jump_to_next_scene_or_storage(scene)
+		if not jumped and not _decision_load_failed and scene.get("nexts", []).is_empty():
+			# A scene compiled without nexts falls back to scanning the rest of
+			# the storage for the next jumpable edge (PLAN_P0 step 2).
+			jumped = _jump_to_next_storage()
+		if _decision_load_failed:
+			# A branch decision was reached but its storage JSON is missing; a
+			# specific error is already shown and playback must not loop.
+			return
+		if not jumped:
+			if game_ended:
+				return
 			_show_error("End of playable scenario.")
 			return
 
 
+func _scene_requests_selection(scene: Dictionary) -> bool:
+	# A scene carrying selects pauses playback instead of following nexts:
+	# apply_selection() resumes after the player picks one
+	# (docs/plan/PLAN_P0_BRANCH_ENGINE.md step 3).
+	if replaying_state or selection_pending:
+		return false
+	var selects: Array = scene.get("selects", [])
+	if selects.is_empty():
+		return false
+	var available := _filter_selects(selects)
+	if available.is_empty():
+		push_warning("All selects filtered out at %s *%s; falling through to nexts" % [storage, str(scene.get("label", ""))])
+		return false
+	_present_selection(available, scene.get("selectInfo", {}))
+	return true
+
+
+func _filter_selects(selects: Array) -> Array:
+	var available: Array = []
+	for option_value in selects:
+		if typeof(option_value) != TYPE_DICTIONARY:
+			continue
+		var option: Dictionary = option_value
+		if option.has("eval") and not branch_flags.check(str(option["eval"])):
+			continue
+		available.append(option)
+	available.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("selidx", 0)) < int(b.get("selidx", 0))
+	)
+	return available
+
+
+func _present_selection(available: Array, info: Dictionary) -> void:
+	_pending_selects = available
+	_pending_select_info = info.duplicate(true)
+	selection_pending = true
+	last_selection_event = {"pending": true, "count": available.size()}
+	_present_selection_ui()
+
+
+func _close_select_screen() -> void:
+	if _select_screen != null and is_instance_valid(_select_screen):
+		_select_screen.queue_free()
+	_select_screen = null
+
+
+## SelectScreen click handler.
+func _on_select_chosen(index: int) -> void:
+	apply_selection(index)
+
+
+## Injection API for QA/trace fixtures: resolves the pending selection exactly
+## like a click on the overlay would (PLAN_P0 step 3).
+func apply_selection(index: int) -> bool:
+	if not selection_pending or index < 0 or index >= _pending_selects.size():
+		return false
+	var option: Dictionary = _pending_selects[index]
+	if not _apply_selection_expression(str(option.get("exp", ""))):
+		push_warning("Selection exp could not be parsed: " + str(option.get("exp", "")))
+	var tag := str(option.get("tag", ""))
+	var chosen_value := _selection_value_from_expression(str(option.get("exp", "")))
+	branch_flags.set_branch(tag, chosen_value)
+	selection_history.append({
+		"storage": str(option.get("storage", storage)),
+		"target": str(option.get("target", "")),
+		"tag": tag,
+		"value": chosen_value,
+		"selidx": int(option.get("selidx", 0)),
+		"name": str(option.get("name", "")),
+	})
+	last_selection_event = {
+		"pending": false,
+		"index": index,
+		"storage": str(option.get("storage", storage)),
+		"target": str(option.get("target", "")),
+		"tag": tag,
+		"value": chosen_value,
+	}
+	_pending_selects = []
+	selection_pending = false
+	_close_select_screen()
+	var next_storage := str(option.get("storage", storage)).to_lower()
+	var next_target := str(option.get("target", ""))
+	last_branch_decision = {"storage": next_storage, "target": next_target, "source": "select"}
+	if next_storage == storage:
+		_select_scene(next_target)
+	else:
+		# Load BEFORE mutating storage/target so a failed load leaves the
+		# current cursor consistent (the choice itself is kept in history).
+		if not _load_scenario(next_storage):
+			_decision_load_failed = true
+			_show_error("Scenario not found: " + next_storage + " (missing scn json)")
+			return true
+		storage = next_storage
+		target = next_target
+		_select_scene(target)
+	_continue_until_text()
+	return true
+
+
+func _apply_selection_expression(expression: String) -> bool:
+	var parsed := _selection_expression_parts(expression)
+	if parsed.is_empty():
+		return false
+	branch_flags.set_branch(parsed["tag"], int(parsed["value"]))
+	return true
+
+
+func _selection_expression_parts(expression: String) -> Dictionary:
+	var match := RegEx.create_from_string('SetBranchFlags\\("([^"]+)",\\s*(\\d+)\\)').search(expression)
+	if match == null:
+		return {}
+	return {"tag": match.get_string(1), "value": int(match.get_string(2))}
+
+
+func _selection_value_from_expression(expression: String) -> int:
+	var parsed := _selection_expression_parts(expression)
+	return int(parsed.get("value", 0))
+
+
+func _resolve_map_background_path(background_name: String) -> String:
+	if background_name == "":
+		return ""
+	var direct := _resolve_image("bgimage", background_name)
+	if direct != "":
+		return direct
+	direct = _resolve_image("evimage", background_name)
+	if direct != "":
+		return direct
+	return ProjectSettings.globalize_path(ResourceIndex.resolve_first(
+		["bgimage", "evimage", "data"],
+		_name_candidates(background_name, "png") + _name_candidates(background_name, "jpg")
+	))
+
+
 func _jump_to_next_scene_or_storage(scene: Dictionary) -> bool:
-	var nexts: Array = scene.get("nexts", [])
+	return _evaluate_nexts(scene.get("nexts", []))
+
+
+func _evaluate_nexts(nexts: Array) -> bool:
+	# Branch points list candidate edges in priority order: the first type-0
+	# entry whose eval passes (or that has no eval) wins. type-1 entries are
+	# compiler sentinels — error.ks is unreachable by design, and the one other
+	# variant (ru05_04 → start.ks *gameend_title) means the scenario finished
+	# and control returns to the title.
+	# Returns true when playback may continue from the new cursor. A decision
+	# whose storage JSON is missing reports _decision_load_failed instead.
+	_decision_load_failed = false
+	var fallback_error := false
 	for item in nexts:
 		if typeof(item) != TYPE_DICTIONARY:
 			continue
 		var next: Dictionary = item
-		if int(next.get("type", 0)) != 0:
+		var next_type := int(next.get("type", 0))
+		if next_type != 0:
+			var sentinel_storage := str(next.get("storage", "error.ks")).to_lower()
+			if sentinel_storage == "error.ks":
+				fallback_error = true
+				continue
+			_handle_gameend(next)
+			return false
+		if next.has("eval") and not branch_flags.check(str(next["eval"])):
 			continue
 		var next_storage := str(next.get("storage", storage)).to_lower()
 		var next_target := str(next.get("target", ""))
+		last_branch_decision = {"storage": next_storage, "target": next_target, "eval": str(next.get("eval", ""))}
 		if next_storage == storage:
 			_select_scene(next_target)
 			return true
+		# Load BEFORE mutating storage/target: a failed load must leave the
+		# current cursor untouched so re-evaluation stays consistent.
+		if not _load_scenario(next_storage):
+			_decision_load_failed = true
+			_show_error("Scenario not found: " + next_storage + " (missing scn json)")
+			return false
 		storage = next_storage
 		target = next_target
-		if _load_scenario(storage):
-			_select_scene(target)
-			return true
+		_select_scene(target)
+		return true
+	if fallback_error:
+		# Only error sentinels remained: the chart tooling considers this path
+		# unreachable, so surface the missing-route condition explicitly.
+		_show_error("End of playable scenario. (only unreachable error.ks edges remain)")
+		return false
 	return false
 
 
+func _handle_gameend(next: Dictionary) -> void:
+	game_ended = true
+	var next_storage := str(next.get("storage", "")).to_lower()
+	var next_target := str(next.get("target", ""))
+	last_branch_decision = {"storage": next_storage, "target": next_target, "source": "gameend"}
+	action_requested.emit("gameend")
+
+
 func _jump_to_next_storage() -> bool:
+	# Defensive fallback for scenes without nexts: scan the remaining scenes of
+	# the current storage for the next jumpable edge.
+	var scenes: Array = scenario.get("scenes", [])
+	for index in range(clampi(scene_index, 0, scenes.size()), scenes.size()):
+		var candidate: Dictionary = scenes[index]
+		var nexts: Array = candidate.get("nexts", [])
+		if nexts.is_empty():
+			continue
+		return _evaluate_nexts(nexts)
 	return false
 
 
@@ -898,7 +1116,7 @@ func _show_text(entry: Dictionary) -> void:
 		"text": str(entry.get("text", "")),
 		"voice": str(entry.get("voice", "")),
 		"favorite": bool(entry.get("favorite", false)),
-		"state": {"storage": storage, "target": target, "scene_index": scene_index, "line_index": line_index},
+		"state": {"storage": storage, "target": target, "scene_index": scene_index, "line_index": line_index, "branch_flags": branch_flags.to_dict()},
 	}
 	if history_entries.is_empty() or history_entries.back() != history_entry:
 		history_entries.append(history_entry)
@@ -1038,7 +1256,7 @@ func _request_action_wait() -> void:
 
 
 func _is_script_waiting() -> bool:
-	return wait_deadline_ms >= 0 or waiting_for_voice or waiting_for_actions or movie_playing
+	return wait_deadline_ms >= 0 or waiting_for_voice or waiting_for_actions or movie_playing or selection_pending
 
 
 func _clear_script_wait() -> void:
@@ -1050,6 +1268,9 @@ func _clear_script_wait() -> void:
 func _process_script_wait() -> bool:
 	if not _is_script_waiting():
 		return false
+	if selection_pending:
+		# A choice overlay is up: only apply_selection() may resolve this wait.
+		return true
 	if movie_playing:
 		return true
 	if wait_deadline_ms >= 0 and Time.get_ticks_msec() < wait_deadline_ms:
@@ -3954,6 +4175,7 @@ func _show_error(message: String) -> void:
 
 func export_save_state() -> Dictionary:
 	return {
+		"v": 2,
 		"storage": storage,
 		"target": target,
 		"scene_index": scene_index,
@@ -3969,6 +4191,11 @@ func export_save_state() -> Dictionary:
 		"current_chapter": current_chapter,
 		"current_scnchart": current_scnchart,
 		"quickmenu_visible": quickmenu_layer != null and quickmenu_layer.visible,
+		"branch_flags": branch_flags.to_dict(),
+		"selection_history": selection_history.duplicate(true),
+		"last_branch_decision": last_branch_decision.duplicate(true),
+		"pending_selects": _pending_selects.duplicate(true) if selection_pending else [],
+		"pending_select_info": _pending_select_info.duplicate(true) if selection_pending else {},
 	}
 
 
@@ -4040,6 +4267,14 @@ func export_trace_frame() -> Dictionary:
 			"voice_playing": voice_player != null and voice_player.playing,
 			"active_sounds": active_sounds,
 		},
+		"branch": {
+			"branch_flags": branch_flags.to_dict(),
+			"selection_pending": selection_pending,
+			"pending_count": _pending_selects.size(),
+			"last_selection": last_selection_event,
+			"last_decision": last_branch_decision,
+			"game_ended": game_ended,
+		},
 	}
 
 
@@ -4089,6 +4324,31 @@ func import_save_state(state: Dictionary) -> void:
 	if quickmenu_layer != null:
 		quickmenu_layer.visible = bool(state.get("quickmenu_visible", quickmenu_layer.visible))
 	_set_window_hidden(bool(state.get("window_hidden", window_hidden)))
+	branch_flags.from_dict(Dictionary(state.get("branch_flags", {})))
+	selection_history = Array(state.get("selection_history", [])).duplicate(true)
+	last_branch_decision = Dictionary(state.get("last_branch_decision", {})).duplicate(true)
+	var pending_selects: Array = Array(state.get("pending_selects", [])).duplicate(true)
+	if not pending_selects.is_empty():
+		_pending_selects = pending_selects
+		_pending_select_info = Dictionary(state.get("pending_select_info", {})).duplicate(true)
+		selection_pending = true
+		_present_selection_ui()
+	else:
+		selection_pending = false
+
+
+func _present_selection_ui() -> void:
+	_close_select_screen()
+	var screen: Control = SelectScreen.new()
+	var background_name := str(Dictionary(_pending_select_info.get("_init", {})).get("bg", ""))
+	screen.setup(_pending_selects, _pending_select_info, _resolve_map_background_path(background_name))
+	screen.selected.connect(_on_select_chosen)
+	screen.z_index = 1500
+	screen.z_as_relative = false
+	screen.name = "SelectScreen"
+	add_child(screen)
+	_select_screen = screen
+	action_requested.emit("select_show")
 
 
 func jump_to_history_entry(history_entry: Dictionary, history_index: int = -1) -> bool:
@@ -4107,6 +4367,7 @@ func jump_to_history_entry(history_entry: Dictionary, history_index: int = -1) -
 		_show_error("Scenario not found: " + storage)
 		return false
 	_clear_runtime_story_state()
+	branch_flags.from_dict(Dictionary(jump_state.get("branch_flags", {})))
 	var saved_scene := int(jump_state.get("scene_index", 0))
 	var saved_line := int(jump_state.get("line_index", 0))
 	_replay_until(saved_scene, saved_line)
@@ -4174,6 +4435,17 @@ func _clear_runtime_story_state() -> void:
 	if bgm_player != null:
 		bgm_player.stop()
 	bgm_current_path = ""
+	# Selection/branch state: a fresh start or a history jump rebuilds these
+	# from their own source (empty new game, save state, or history snapshot).
+	selection_pending = false
+	_pending_selects = []
+	_pending_select_info = {}
+	_close_select_screen()
+	selection_history = []
+	last_selection_event = {}
+	last_branch_decision = {}
+	game_ended = false
+	branch_flags.scene_values.clear()
 
 
 func _replay_until(saved_scene: int, saved_line: int) -> void:
