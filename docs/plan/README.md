@@ -12,3 +12,7 @@
 
 - [PLAN_P0_BRANCH_ENGINE.md](PLAN_P0_BRANCH_ENGINE.md) — 选择支与分支引擎
   (选择支 UI、CheckBranchFlags/SetBranchFlags 状态机、跨文件跳转、存档 v2)
+  **已完成并验证(2026-09-10)**
+- [PLAN_P1_SCN_JSON_AND_STANDS.md](PLAN_P1_SCN_JSON_AND_STANDS.md) — 本地
+  PSB v3 → SCN JSON 转换器(解锁 216 个剧本)、整身立绘素材与 PBD 元数据归位、
+  Windows 最小补缺清单(2 个加密 scn + 64 个 PBD)与降级立绘决策
