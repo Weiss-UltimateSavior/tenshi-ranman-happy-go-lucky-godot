@@ -13,12 +13,13 @@ signal selected(index: int)
 const DIALOG_LAYERS := "res://assets/ui/exported/dialog/layers/"
 const BUTTON_BG := {"off": 5884, "over": 5887, "on": 5890}
 const BUTTON_SOURCE_SIZE := Vector2(247, 49)
+const DIALOG_FONT_SIZE := 17
 const MAP_BUTTON_SIZE := Vector2(400, 72)
 
 var _options: Array = []
 var _info: Dictionary = {}
 var _bg_path := ""
-var _button_visuals: Array[TextureRect] = []
+var _button_visuals: Array[NinePatchRect] = []
 var _buttons: Array[Button] = []
 
 
@@ -87,7 +88,9 @@ func _build_dialog() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(dim)
 
-	var button_size := BUTTON_SOURCE_SIZE * ui_scale()
+	# Original behaviour: every choice button widens to the longest text so no
+	# label ever spills past the pill background.
+	var button_size := _dialog_button_size()
 	var spacing := 12.0
 	var total_height := _options.size() * button_size.y + (_options.size() - 1) * spacing
 	var start_y := (size.y - total_height) * 0.5
@@ -97,6 +100,21 @@ func _build_dialog() -> void:
 			(size.x - button_size.x) * 0.5,
 			start_y + index * (button_size.y + spacing)
 		), button_size)
+
+
+func _dialog_button_size() -> Vector2:
+	var height := BUTTON_SOURCE_SIZE.y * ui_scale().y
+	var font := _message_font()
+	var text_width := 0.0
+	for option_value in _options:
+		var text := str(Dictionary(option_value).get("text", ""))
+		if font != null:
+			text_width = maxf(text_width, font.get_string_size(
+				text, HORIZONTAL_ALIGNMENT_LEFT, -1, DIALOG_FONT_SIZE).x)
+		else:
+			text_width = maxf(text_width, text.length() * DIALOG_FONT_SIZE)
+	# Keep the source pill width as the minimum and add breathing room.
+	return Vector2(maxf(BUTTON_SOURCE_SIZE.x * ui_scale().x, text_width + 64.0), height)
 
 
 func _build_map() -> void:
@@ -141,11 +159,15 @@ func _add_select_button(index: int, caption: String, subcaption: String, positio
 	add_child(button)
 	_buttons.append(button)
 
-	var visual := TextureRect.new()
+	var visual := NinePatchRect.new()
 	visual.name = "Visual%d" % index
 	visual.texture = load_texture(DIALOG_LAYERS + str(BUTTON_BG["off"]) + ".png")
-	visual.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	visual.stretch_mode = TextureRect.STRETCH_SCALE
+	# The pill art has rounded ends; nine-patch keeps them intact while the
+	# middle stretches to the measured text width.
+	visual.patch_margin_left = 36
+	visual.patch_margin_right = 36
+	visual.patch_margin_top = 18
+	visual.patch_margin_bottom = 18
 	visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visual.size = button_size
 	button.add_child(visual)
@@ -158,7 +180,7 @@ func _add_select_button(index: int, caption: String, subcaption: String, positio
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		label.add_theme_font_override("font", _message_font())
-		label.add_theme_font_size_override("font_size", 17)
+		label.add_theme_font_size_override("font_size", DIALOG_FONT_SIZE)
 		label.add_theme_color_override("font_color", Color(0.16, 0.1, 0.12))
 		if subcaption == "":
 			label.set_anchors_preset(Control.PRESET_FULL_RECT)
