@@ -28,7 +28,13 @@ compared as a boolean; resource and command identities are compared instead.
 
 A second baseline, `qa/traces/godot_branch_trace.json`, plays st04_04 through
 the accessory dialog selection (佐奈), continues into st04_05, and records the
-`CheckBranchFlags("acc_san")` branch decision to 0429_sel.ks *0429_san. Both
+`CheckBranchFlags("acc_san")` branch decision to 0429_sel.ks *0429_san.
+
+A third baseline, `qa/traces/godot_map_route_trace.json`, covers the map
+selection route unlocked by the local PSB converter
+(`tools/psb_to_json.py`, docs/plan/PLAN_P1_SCN_JSON_AND_STANDS.md §1):
+st02_03 map choice (佐奈) → sn_map01.ks (46 frames) → st02_04.ks, with the
+selection event recorded. Both
 routes support user args on export/verify (`--storage/--target/--output/
 --reference/--select-index`) so fixtures replay selections via
 `apply_selection()` instead of real clicks.

@@ -59,7 +59,11 @@
 ## 阶段 5：VN 运行时
 
 - [ ] 定义 Godot 中间剧情格式。（当前直接读取 SCN 反编译 JSON；独立中间格式仍未定义）
-- [ ] 从 SCN JSON 转换剧情文本、角色、立绘、CG、BGM、SE、voice、choice。
+- [x] 从 SCN JSON 转换剧情文本、角色、立绘、CG、BGM、SE、voice、choice。
+      已用本地纯 Python 转换器 `tools/psb_to_json.py` 解出全部 216 个明文 PSB 剧本
+      （`assets/scn/` JSON 75 → 291），全部地图落点与角色线正文可加载；
+      2 个加密 scn（0429_sel/0604_sel）仍需 Windows FreeMote。
+      （docs/plan/PLAN_P1_SCN_JSON_AND_STANDS.md §1）
 - [x] 实现选择支与分支引擎：解析 `scenes[].selects`（对话/地图两型 UI、eval 过滤、selidx 排序）、`SetBranchFlags/CheckBranchFlags` 标志状态机（`tools/compile_branch_flags.py` 编译 `scnchartdata.tjs` → `branch_flags.json`）、`nexts[].eval` 分支求值、跨文件跳转与 gameend 返回标题（`docs/plan/PLAN_P0_BRANCH_ENGINE.md`）。
 - [x] 实现存档 v2：branch_flags / selection_history / last_branch_decision / 挂起选择随档恢复，旧档零迁移。
 - [x] 分支轨迹基线：`qa/traces/godot_branch_trace.json`（st04_04 佐奈选择 → st04_05 acc_san 判定），export/verify 支持多基线参数。
