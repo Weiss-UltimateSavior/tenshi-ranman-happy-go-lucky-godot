@@ -16,3 +16,7 @@
 - [PLAN_P1_SCN_JSON_AND_STANDS.md](PLAN_P1_SCN_JSON_AND_STANDS.md) — 本地
   PSB v3 → SCN JSON 转换器(解锁 216 个剧本)、整身立绘素材与 PBD 元数据归位、
   Windows 最小补缺清单(2 个加密 scn + 64 个 PBD)与降级立绘决策
+  **§1/§2/§3-B 已完成(2026-09-10);仅降级路线 C 未采用(已被本地解码器取代)**
+- [PLAN_P2_TEXT_AUDIO_CONTENT.md](PLAN_P2_TEXT_AUDIO_CONTENT.md) — 文字表现
+  (打字机逐字/点击补全/速度滑条)、音频循环(`.sli` 循环点)、Extra 三屏与解锁
+  状态、影片管线(WMV→OGV)、消息窗头像复验

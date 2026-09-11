@@ -33,11 +33,30 @@ the accessory dialog selection (佐奈), continues into st04_05, and records the
 A third baseline, `qa/traces/godot_map_route_trace.json`, covers the map
 selection route unlocked by the local PSB converter
 (`tools/psb_to_json.py`, docs/plan/PLAN_P1_SCN_JSON_AND_STANDS.md §1):
-st02_03 map choice (佐奈) → sn_map01.ks (46 frames) → st02_04.ks, with the
+st02_03 map choice (佐奈) → sn_map01.ks (60 frames) → st02_04.ks, with the
 selection event recorded. Both
 routes support user args on export/verify (`--storage/--target/--output/
 --reference/--select-index`) so fixtures replay selections via
 `apply_selection()` instead of real clicks.
+
+`qa/` is git-ignored (it comes from the asset archives), so each developer
+records their own baselines. Record them with an explicit frame count — the
+exporter defaults to 32, which silently truncates longer routes:
+
+```text
+godot --headless --script res://tools/qa_export_story_trace.gd
+godot --headless --script res://tools/qa_export_story_trace.gd -- "--storage=st04_04.ks" \
+  "--target=*0429_4" "--select-index=1" "--entry-count=210" \
+  "--output=res://qa/traces/godot_branch_trace.json"
+godot --headless --script res://tools/qa_export_story_trace.gd -- "--storage=st02_03.ks" \
+  "--target=*dummyselect1" "--select-index=1" "--entry-count=60" \
+  "--output=res://qa/traces/godot_map_route_trace.json"
+```
+
+If a baseline predates a resource move or an asset fix it must be re-recorded:
+the 2026-09-11 re-record moved `bgm_path` to `res://assets/audio/bgm/` (P2 §2
+`.sli` work) and picked up the restored 佐奈 stand (P1 TLG filename repair), so
+frames that previously recorded no character now record one.
 
 ## Branch Selection Coverage
 

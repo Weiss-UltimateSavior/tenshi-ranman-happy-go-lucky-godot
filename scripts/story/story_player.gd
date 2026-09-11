@@ -1,6 +1,7 @@
 extends Control
 
 #"st04_04.ks" / "*0429_4"
+#"sn37_01.ks" / "*1020"
 
 signal action_requested(action: String)
 
@@ -26,6 +27,9 @@ const SOURCE_SCALE_VECTOR := Vector2(SOURCE_SCALE, SOURCE_SCALE)
 const WhiteBallEmitterScene := preload("res://scripts/story/white_ball_emitter.gd")
 const BranchFlags := preload("res://scripts/story/branch_flags.gd")
 const SelectScreen := preload("res://scripts/ui/select_screen.gd")
+const SliParser := preload("res://scripts/story/sli_parser.gd")
+const GalleryProgress := preload("res://scripts/story/gallery_progress.gd")
+const GalleryLists := preload("res://scripts/story/gallery_lists.gd")
 # KAGEnvironment converts between a perspective-space z position and z-order
 # with cameraoffsetz=-100. Character layers opt into zorderZoom/zorderMove,
 # so their scale and authored offsets use this derived resolution.
@@ -213,6 +217,10 @@ var auto_mode := false
 var skip_mode := false
 var muted := false
 var auto_elapsed := 0.0
+# Typewriter state: the original reveals text at the 文字表示速度 setting's rate
+# and a click completes the line before advancing (custom.tjs/default.tjs).
+var reveal_progress := 0.0
+var reveal_active := false
 var bgm_current_path := ""
 var visual_layer_paths: Dictionary = {}
 var auxiliary_visual_paths: Dictionary = {}
@@ -240,6 +248,7 @@ var last_branch_decision: Dictionary = {}
 var last_selection_event: Dictionary = {}
 var game_ended := false
 var _decision_load_failed := false
+var gallery: GalleryProgress
 var procedural_script_actions: Array[Dictionary] = []
 var script_action_tweens: Array[Tween] = []
 
@@ -250,6 +259,7 @@ func _ready() -> void:
 	_fit_full_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	branch_flags = BranchFlags.new()
+	gallery = GalleryProgress.new()
 	_start_preload_thread()
 	_build_layers()
 	AudioManager.stop_bgm()
@@ -271,6 +281,7 @@ func _process(delta: float) -> void:
 		return
 	if backlog_mode:
 		return
+	_process_text_reveal(delta)
 	if _process_script_wait():
 		return
 	if skip_mode or Input.is_key_pressed(KEY_CTRL):
@@ -278,10 +289,19 @@ func _process(delta: float) -> void:
 			advance()
 		return
 	if auto_mode:
+		# Auto waits for the line to finish revealing and for any voice to end;
+		# the delay itself is the 自動表示速度 setting.
+		if reveal_active:
+			return
 		auto_elapsed += delta
-		if auto_elapsed >= 1.35 and not voice_player.playing:
+		if auto_elapsed >= _auto_advance_delay() and not voice_player.playing:
 			auto_elapsed = 0.0
 			advance()
+
+
+func _auto_advance_delay() -> float:
+	var speed := clampf(SystemSettings.get_slider("autospeed", 0.5), 0.0, 1.0)
+	return lerpf(3.0, 0.6, speed)
 
 
 func start(start_storage: String, start_target: String = "") -> void:
@@ -345,6 +365,11 @@ func advance() -> void:
 		return
 	auto_elapsed = 0.0
 	if _is_script_waiting():
+		return
+	if reveal_active:
+		# First click completes the line; the next one advances (original
+		# two-stage semantics).
+		_finish_text_reveal()
 		return
 	if window_hidden:
 		_set_window_hidden(false)
@@ -1127,10 +1152,55 @@ func _show_text(entry: Dictionary) -> void:
 	var speaker_name := str(entry.get("name", ""))
 	name_label.text = _format_speaker_name(speaker_name)
 	text_label.text = str(entry.get("text", ""))
+	_begin_text_reveal()
 	var voice := str(entry.get("voice", ""))
 	if voice != "":
 		_play_voice(voice)
 	_schedule_story_preload()
+
+
+## Start (or skip) the typewriter for the line just assigned to text_label.
+func _begin_text_reveal() -> void:
+	if not respect_script_waits or replaying_state:
+		# Trace fixtures and save replays must present the full line at once so
+		# their structural baselines stay frame-deterministic.
+		_finish_text_reveal()
+		return
+	var length := text_label.text.length()
+	if length <= 0:
+		_finish_text_reveal()
+		return
+	reveal_progress = 0.0
+	reveal_active = true
+	text_label.visible_characters = 0
+
+
+func _finish_text_reveal() -> void:
+	reveal_active = false
+	reveal_progress = 0.0
+	text_label.visible_characters = -1
+
+
+## Reveal rate from the 文字表示速度 setting: 0 = slowest, 1 = fastest (the
+## original ranges 0..100 with _textSpeedMax in config.tjs, then maps to a
+## per-character delay). The curve keeps the slowest end readable and the
+## fastest end effectively instant.
+func _text_reveal_chars_per_second() -> float:
+	var speed := clampf(SystemSettings.get_slider("textspeed", 0.5), 0.0, 1.0)
+	if speed >= 0.999:
+		return 1.0e9
+	return lerpf(8.0, 240.0, speed * speed)
+
+
+func _process_text_reveal(delta: float) -> void:
+	if not reveal_active:
+		return
+	var total := text_label.text.length()
+	reveal_progress += delta * _text_reveal_chars_per_second()
+	if reveal_progress >= float(total):
+		_finish_text_reveal()
+		return
+	text_label.visible_characters = int(reveal_progress)
 
 
 func _apply_skipped_text_entry(entry: Dictionary) -> void:
@@ -1235,6 +1305,7 @@ func set_trace_instant_mode(enabled: bool) -> void:
 		_clear_script_wait()
 		_cancel_script_action_tweens()
 		_clear_visual_transition_overlays()
+		_finish_text_reveal()
 		if window_layer != null and not window_hidden and not backlog_mode:
 			window_layer.visible = true
 
@@ -1371,10 +1442,12 @@ func _apply_script_object(kind: String, object: Dictionary) -> void:
 			_apply_visual_object(stage_layer, object, "bgimage")
 			_apply_stage_transform(stage_layer, object)
 			_finish_visual_transition(stage_layer, object)
+			_unlock_gallery_cg(object)
 		"event":
 			_apply_visual_object(event_layer, object, "evimage")
 			_apply_script_transform(event_layer, object, true)
 			_finish_visual_transition(event_layer, object)
+			_unlock_gallery_cg(object)
 		"character":
 			_apply_character_object(object)
 		"msgwin":
@@ -1952,6 +2025,20 @@ func _dir_exists_absolute(path: String) -> bool:
 	return resolved != "" and DirAccess.dir_exists_absolute(resolved)
 
 
+## Apply WaveLoopManager loop points from the `.sli` sidecar: the derived
+## copy is already truncated at `From`, so loop_offset = To yields the exact
+## original loop range [To, From] (docs/sli_loop.md).
+func _apply_bgm_loop_points(ogg: AudioStreamOggVorbis, audio_path: String) -> void:
+	var parser := SliParser.new()
+	if not parser.load_for_audio(audio_path):
+		return
+	var rate := 44100.0  # see audio_manager.gd: no mix_rate property in 4.6
+	var loop := parser.loop_seconds(rate)
+	if loop.is_empty():
+		return
+	ogg.loop_offset = float(loop["begin"])
+
+
 func _apply_bgm(object: Dictionary) -> void:
 	if bgm_player == null:
 		return
@@ -1975,8 +2062,12 @@ func _apply_bgm(object: Dictionary) -> void:
 	var ogg := stream as AudioStreamOggVorbis
 	if ogg != null:
 		ogg.loop = bool(int(replay.get("loop", 1)))
+		if ogg.loop:
+			_apply_bgm_loop_points(ogg, path)
 	bgm_player.stream = stream
 	bgm_current_path = path
+	if gallery != null:
+		gallery.unlock("bgm", filename.get_basename())
 	bgm_player.volume_db = AudioManager._volume_db(AudioManager.master_volume * AudioManager.bgm_volume)
 	bgm_player.play()
 
@@ -3446,6 +3537,24 @@ func _character_position_zpos(position_name: String) -> float:
 	return KAG_CAMERA_OFFSET_Z / (zorder / 100.0) - KAG_CAMERA_OFFSET_Z
 
 
+## Record CG/event artwork the first time it is shown, mirroring the original
+## Extra gallery unlock (event images only — backgrounds are not CG entries).
+func _unlock_gallery_cg(object: Dictionary) -> void:
+	if gallery == null:
+		return
+	var image_file: Dictionary = Dictionary(object.get("redraw", {})).get("imageFile", {})
+	var image_name := str(Dictionary(image_file).get("file", ""))
+	if image_name == "":
+		return
+	var key := image_name.get_basename()
+	if not key.begins_with("ev"):
+		return
+	# Resolve the authored group key (cglist lists "EV0102A" for the ev0102a-f
+	# variants) so a CG seen in the story lights up in the Extra gallery.
+	var group := GalleryLists.cg_group_for(key)
+	gallery.unlock("cg", group if group != "" else key)
+
+
 func _apply_message_face_object(object: Dictionary) -> void:
 	if int(object.get("showmode", 3)) == 0:
 		_clear_message_face()
@@ -4080,6 +4189,15 @@ func _resolve_audio(packages: Array, name: String) -> String:
 	if audio_resolve_cache.has(cache_key):
 		return audio_resolve_cache[cache_key]
 	var candidates := _name_candidates(name, "ogg")
+	# Loop-ready BGM copies (tools/prepare_bgm_loops.py) are truncated at the
+	# sli `From` sample so Godot's loop_offset reproduces the original loop
+	# range exactly; prefer them over the archival originals.
+	if packages.has("bgm"):
+		for candidate_value in candidates:
+			var loop_path := "res://assets/audio/bgm/" + str(candidate_value)
+			if FileAccess.file_exists(loop_path):
+				audio_resolve_cache[cache_key] = loop_path
+				return loop_path
 	for package in packages:
 		for candidate_value in candidates:
 			var candidate := str(candidate_value)
@@ -4163,12 +4281,27 @@ func _apply_sysmovie(properties: Dictionary) -> void:
 		push_warning("Failed to load scenario movie stream: " + stream_path)
 		return
 	current_movie_storage = requested
+	# Playing a movie unlocks its replay entry in the Extra scene gallery.
+	if gallery != null:
+		gallery.unlock("scene", _scene_gallery_key(requested))
 	movie_can_skip = str(properties.get("canskip", "false")).to_lower() == "true"
 	movie_overlay.color = _movie_background_color(properties.get("color", "0x000000"))
 	movie_player.stream = stream
 	movie_overlay.visible = true
 	movie_playing = true
 	movie_player.play()
+
+
+## Story movies are referenced by storage name ("ED_aoi", "花火"); the Extra
+## scenelist keys entries by their thumbnail ("EDthum_aoi", "OPthum"). Match on
+## the movie/stem substring so either side resolves to the same entry.
+func _scene_gallery_key(movie_name: String) -> String:
+	var wanted := movie_name.to_lower()
+	for entry in GalleryLists.scene_entries():
+		var movie := str(entry.get("movie", "")).to_lower()
+		if movie != "" and (movie == wanted or wanted.begins_with(movie) or movie.begins_with(wanted)):
+			return str(entry.get("key", movie_name))
+	return movie_name
 
 
 func _resolve_movie_stream(storage_name: String) -> String:
@@ -4259,6 +4392,7 @@ func export_save_state() -> Dictionary:
 		"last_branch_decision": last_branch_decision.duplicate(true),
 		"pending_selects": _pending_selects.duplicate(true) if selection_pending else [],
 		"pending_select_info": _pending_select_info.duplicate(true) if selection_pending else {},
+		"reveal_progress": reveal_progress if reveal_active else -1.0,
 	}
 
 
@@ -4377,6 +4511,15 @@ func import_save_state(state: Dictionary) -> void:
 	current_entry = Dictionary(state.get("current_entry", {})).duplicate(true)
 	if not current_entry.is_empty():
 		_show_text(current_entry)
+		# A save taken mid-typewriter resumes at the recorded character; older
+		# saves (no field) present the complete line.
+		var saved_reveal := float(state.get("reveal_progress", -1.0))
+		if saved_reveal > 0.0 and saved_reveal < float(text_label.text.length()):
+			reveal_active = true
+			reveal_progress = saved_reveal
+			text_label.visible_characters = int(reveal_progress)
+		else:
+			_finish_text_reveal()
 	else:
 		name_label.text = str(state.get("name", ""))
 		text_label.text = str(state.get("text", ""))
@@ -4503,6 +4646,8 @@ func _clear_runtime_story_state() -> void:
 	selection_pending = false
 	_pending_selects = []
 	_pending_select_info = {}
+	reveal_active = false
+	reveal_progress = 0.0
 	_close_select_screen()
 	selection_history = []
 	last_selection_event = {}
