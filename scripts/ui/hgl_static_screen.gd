@@ -51,6 +51,8 @@ const HELP_TEXT := {
 const COLOR_TARGETS := ["color_win", "color_owin", "color_text", "color_read"]
 const BACKLOG_FONT := "res://assets/data/font/sourcehansansjp-bold.otf"
 const TftBitmapText := preload("res://scripts/ui/tft_bitmap_text.gd")
+const GalleryLists := preload("res://scripts/story/gallery_lists.gd")
+const GalleryProgress := preload("res://scripts/story/gallery_progress.gd")
 const BACKLOG_VISIBLE_ROWS := 5
 const BACKLOG_ROW_SOURCE_HEIGHT := 180.0
 const BACKLOG_SCROLL_TIME := 0.20
@@ -161,6 +163,20 @@ const EXTRA_TAB_TEXT := {
 }
 const EXTRA_TAB_ORIGIN := Vector2(96, 99)
 const SCNCHART_ROUTES := ["共通", "咲夜", "ルリ", "佐奈", "葵", "まひろ", "紫", "若葉"]
+# `default.tjs` `.scnchartUiItemConsts` lays the chart out on its own axis:
+# `firstofs step:(80)` then `section/subsection step:(100)`.  Rows are placed at
+# (template + step * index) on that axis, so the on-screen pitch is
+# SCNCHART_ITEM_STEP * ui_scale().y.
+const SCNCHART_ITEM_STEP := 100.0
+const SCNCHART_VISIBLE_NODES := 7
+const SCNCHART_SECTION_FALLBACK := Rect2(889, 459, 435, 74)
+const SCNCHART_SUBSECTION_FALLBACK := Rect2(889, 459, 274, 74)
+const SCNCHART_SCROLL_FALLBACK := Rect2(576, 0, 896, 982)
+# `scnchartUiLineConsts`: normal 0xFFa987c8, query 0xFF6eb6c3, minimap 0xFFa987c8.
+const SCNCHART_LINE_COLOR := Color8(169, 135, 200)
+const SCNCHART_LINE_QUERY_COLOR := Color8(110, 182, 195)
+const SCNCHART_MINIMAP_COLOR := Color8(169, 135, 200)
+const SCNCHART_MINIMAP_SELECTED_COLOR := Color8(255, 88, 123)
 const SCNCHART_NODE_TITLES := [
 	"プロローグ",
 	"神様との出会い",
@@ -209,10 +225,15 @@ var dragging_slider := ""
 var dragging_color_picker := false
 var selected_chvoice := "chv0"
 var character_preview: Control = null
+var _gallery_cache = null
+var extra_cg_page := 0
+var extra_sound_page := 0
+var extra_scene_page := 0
 var scnchart_page := 0
 var scnchart_scroll := 0
 var scnchart_selected := 0
 var scnchart_runtime_layer: Control = null
+var _func_template_sources: Variant = null
 var font_dialog: Control = null
 var font_dialog_list: ItemList = null
 var font_dialog_selection := ""
@@ -344,6 +365,8 @@ func _ready() -> void:
 	_build_runtime_widgets()
 	_build_extra_nav_visuals()
 	_build_extra_cg_grid()
+	_build_extra_sound_list()
+	_build_extra_scene_list()
 	_build_extra_stand_controls()
 	_build_scnchart_runtime()
 	_build_backlog_runtime()
@@ -465,6 +488,11 @@ func _build_static_action_widgets() -> void:
 	if _uses_runtime_widgets():
 		return
 	for object_name in STATIC_ACTION_OBJECTS:
+		# The chart screen draws its own route tabs and up/down buttons from the
+		# same objects; a second hitbox on top would double-fire the sound and
+		# could steal the press.
+		if screen_name == "scnchart" and (str(object_name).begins_with("page") or str(object_name) in ["top", "pageup", "pagedown", "end"]):
+			continue
 		var object := _find_object(str(object_name))
 		if object.is_empty():
 			continue
@@ -495,6 +523,8 @@ func _build_static_action_widgets() -> void:
 func _handle_local_static_action(action_name: String) -> bool:
 	if screen_name == "scnchart":
 		return _handle_scnchart_action(action_name)
+	if screen_name == "extra":
+		return _handle_extra_action(action_name)
 	if screen_name != "extra_stand":
 		return false
 	match action_name:
@@ -506,6 +536,125 @@ func _handle_local_static_action(action_name: String) -> bool:
 			return true
 		_:
 			return false
+
+
+## CG gallery paging (the authored list exceeds one grid page).
+func _handle_extra_action(action_name: String) -> bool:
+	var per_page := _extra_cg_grid_positions().size()
+	if per_page <= 0:
+		return false
+	var total := GalleryLists.cg_entries().size()
+	var max_page: int = maxi(0, (total - 1) / per_page)
+	match action_name:
+		"cg_prev":
+			if extra_cg_page <= 0:
+				return false
+			extra_cg_page -= 1
+		"cg_next":
+			if extra_cg_page >= max_page:
+				return false
+			extra_cg_page += 1
+		_:
+			return false
+	# Rebuild just the grid by reloading this screen's runtime layer.
+	_rebuild_extra_cg_grid()
+	return true
+
+
+func _rebuild_extra_cg_grid() -> void:
+	for child in get_children():
+		if str(child.name).begins_with("extra_cg_cell_"):
+			remove_child(child)
+			child.queue_free()
+	_build_extra_cg_grid()
+	action_requested.emit("cg_page_changed:%d" % extra_cg_page)
+
+
+## Music gallery list (assets/main/soundlist.csv) with the original
+## list/contents slot traffic: seven rows per page, unlocked tracks only.
+func _build_extra_sound_list() -> void:
+	if screen_name != "extra":
+		return
+	var gallery: Variant = _gallery_progress()
+	var rows := _extra_content_row_rects()
+	if rows.is_empty():
+		return
+	var entries := GalleryLists.sound_entries()
+	var page_start := extra_sound_page * rows.size()
+	for row_index in range(rows.size()):
+		var entry_index := page_start + row_index
+		if entry_index >= entries.size():
+			break
+		var entry: Dictionary = entries[entry_index]
+		var unlocked: bool = gallery == null or gallery.is_unlocked("bgm", str(entry.get("key", "")))
+		var row_rect: Rect2 = rows[row_index]
+		var label := Label.new()
+		label.name = "extra_sound_row_%d" % row_index
+		label.text = str(entry.get("title", "")) if unlocked else "？？？"
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.position = (row_rect.position + Vector2(8, 0)) * ui_scale()
+		label.size = Vector2(row_rect.size.x - 16, row_rect.size.y) * ui_scale()
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 16)
+		label.add_theme_color_override("font_color", Color(0.12, 0.08, 0.10))
+		if not unlocked:
+			label.modulate = Color(1, 1, 1, 0.55)
+		add_child(label)
+
+
+## Scene replay list (assets/main/scenelist.csv): each row replays a movie.
+func _build_extra_scene_list() -> void:
+	if screen_name != "extra":
+		return
+	var gallery: Variant = _gallery_progress()
+	var rows := _extra_content_row_rects()
+	if rows.is_empty():
+		return
+	var entries := GalleryLists.scene_entries()
+	var page_start := extra_scene_page * rows.size()
+	for row_index in range(rows.size()):
+		var entry_index := page_start + row_index
+		if entry_index >= entries.size():
+			break
+		var entry: Dictionary = entries[entry_index]
+		var unlocked: bool = gallery == null or gallery.is_unlocked("scene", str(entry.get("key", "")))
+		var row_rect: Rect2 = rows[row_index]
+		var label := Label.new()
+		label.name = "extra_scene_row_%d" % row_index
+		label.text = str(entry.get("movie", entry.get("key", ""))) if unlocked else "？？？"
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.position = (row_rect.position + Vector2(8, 0)) * ui_scale()
+		label.size = Vector2(row_rect.size.x - 16, row_rect.size.y) * ui_scale()
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 16)
+		label.add_theme_color_override("font_color", Color(0.12, 0.08, 0.10))
+		if not unlocked:
+			label.modulate = Color(1, 1, 1, 0.55)
+		add_child(label)
+
+
+## Row rectangles for the content list (every third ##rects/ entry is the text
+## slot row; the layout repeats per entry).
+func _extra_content_row_rects() -> Array:
+	var rows := []
+	var layers: Array = compiled_ui.get("layers", [])
+	var index := 0
+	for layer_value in layers:
+		if typeof(layer_value) != TYPE_DICTIONARY:
+			continue
+		var layer: Dictionary = layer_value
+		var path: String = str(layer.get("path", ""))
+		if not path.begins_with("list/contents/##rects/"):
+			continue
+		index += 1
+		# Entries repeat as [number, title, underline]; the title slot is the
+		# second of each triple.
+		if index % 3 != 2:
+			continue
+		rows.append(rect_from_dict(layer.get("rect", {})))
+		if rows.size() >= 7:
+			break
+	return rows
 
 
 func _cover_inactive_simple_tab_underline() -> void:
@@ -621,6 +770,8 @@ func _runtime_resource_layer_path(path: String) -> bool:
 
 
 func _hidden_static_layer_path(path: String) -> bool:
+	if _func_template_layer_path(path):
+		return true
 	if screen_name == "backlog":
 		if path == "bg/captipn/search":
 			return true
@@ -664,6 +815,44 @@ func _hidden_static_layer_path(path: String) -> bool:
 		if _scnchart_runtime_layer_path(path):
 			return true
 	return false
+
+
+## A `.func` declaration of `visible,false` marks a *design sample*: the PSD keeps
+## the artwork visible so the designer can lay it out, but the runtime clones it
+## per item and never shows the original.  `scnchart.func` does this for every
+## chart item type (`section`, `subsection`, `branch`, `select`, `update`, ...),
+## which `scnchart_ui.tjs` instantiates from `scnchartUiItemConsts`.  Without this
+## rule the templates would be drawn on top of the live items.
+func _func_template_layer_path(path: String) -> bool:
+	if _func_template_sources == null:
+		_func_template_sources = _collect_func_template_sources()
+	return _func_template_sources.has(path)
+
+
+func _collect_func_template_sources() -> Dictionary:
+	var sources := {}
+	for object_name in _func_hidden_objects():
+		var object := _find_object(str(object_name))
+		if object.is_empty():
+			continue
+		for slot_value in Dictionary(object.get("slots", {})).values():
+			if typeof(slot_value) != TYPE_DICTIONARY:
+				continue
+			var source := str(Dictionary(slot_value).get("source", ""))
+			if source != "":
+				sources[source] = true
+	return sources
+
+
+func _func_hidden_objects() -> Array:
+	var hidden: Array = []
+	for action_value in compiled_ui.get("func", {}).get("actions", []):
+		if typeof(action_value) != TYPE_DICTIONARY:
+			continue
+		var action: Dictionary = action_value
+		if str(action.get("body", "")).strip_edges() == "visible,false":
+			hidden.append(str(action.get("name", "")))
+	return hidden
 
 
 func _extra_cg_mode_hidden_layer(path: String) -> bool:
@@ -742,6 +931,9 @@ func _build_extra_cg_grid() -> void:
 	var thumb_paths := _extra_cg_thumbnail_paths()
 	var positions := _extra_cg_grid_positions()
 	var frame_origin := scaled_rect(rect_from_dict(frame_slot.get("rect", {}))).position
+	# The grid shows one page (16 cells); the authored list has 65 CG groups, so
+	# page flips come through the extra nav actions below.
+	var page_start := extra_cg_page * positions.size()
 	for index in range(positions.size()):
 		var cell_rect: Rect2 = positions[index]
 		var cell := Control.new()
@@ -751,17 +943,21 @@ func _build_extra_cg_grid() -> void:
 		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(cell)
 		_add_slot_texture(cell, frame_slot, frame_origin)
-		if index < thumb_paths.size():
-			_add_extra_cg_thumbnail(cell, str(thumb_paths[index]))
+		var entry_index := page_start + index
+		if entry_index < thumb_paths.size():
+			_add_extra_cg_thumbnail(cell, str(thumb_paths[entry_index]))
 
 
 func _extra_cg_grid_positions() -> Array:
 	var positions := []
-	for layer in compiled_ui.get("layers", []):
-		var path := str(layer.get("path", ""))
+	var layers: Array = compiled_ui.get("layers", [])
+	for layer_value in layers:
+		if typeof(layer_value) != TYPE_DICTIONARY:
+			continue
+		var path := str(Dictionary(layer_value).get("path", ""))
 		if not path.begins_with("cg_thumbnail/##cg_thumbnail/"):
 			continue
-		positions.append(rect_from_dict(layer.get("rect", {})))
+		positions.append(rect_from_dict(Dictionary(layer_value).get("rect", {})))
 	positions.sort_custom(func(a: Rect2, b: Rect2) -> bool:
 		if is_equal_approx(a.position.y, b.position.y):
 			return a.position.x < b.position.x
@@ -770,43 +966,53 @@ func _extra_cg_grid_positions() -> Array:
 	return positions
 
 
+## CG grid entries in authored list order (assets/main/cglist.csv), filtered by
+## gallery unlock progress. A locked group yields an empty string so the cell
+## keeps only the empty frame; an unlocked group yields its first image path.
 func _extra_cg_thumbnail_paths() -> Array:
 	var result := []
-	if not FileAccess.file_exists(AppConfig.HASH_MANIFEST):
-		return result
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(AppConfig.HASH_MANIFEST))
-	if typeof(parsed) != TYPE_ARRAY:
-		return result
-	var seen := {}
-	for row_variant in parsed:
-		if typeof(row_variant) != TYPE_DICTIONARY:
+	var gallery: Variant = _gallery_progress()
+	for entry in GalleryLists.cg_entries():
+		var names: Array = entry.get("names", [])
+		var group := str(entry.get("group", ""))
+		if group == "":
 			continue
-		var row: Dictionary = row_variant
-		if str(row.get("package", "")) != "evimage":
+		if gallery != null and not bool(gallery.is_unlocked("cg", group)):
+			result.append("")
 			continue
-		if not bool(row.get("exists", false)):
-			continue
-		var real_file := str(row.get("real_file", ""))
-		if real_file == "" or real_file.ends_with(".sli"):
-			continue
-		var group := real_file.get_basename()
-		if group.length() > 0:
-			var tail := group.substr(group.length() - 1, 1)
-			if tail >= "a" and tail <= "z":
-				group = group.substr(0, group.length() - 1)
-		if seen.has(group):
-			continue
-		var hash_path := str(row.get("hash_path", ""))
-		if hash_path == "":
-			continue
-		seen[group] = true
-		result.append(hash_path)
-		if result.size() >= 16:
-			break
+		var first := str(names[0]) if not names.is_empty() else group
+		result.append(_resolve_cg_image(first))
 	return result
 
 
+## Resolve a CG image name (e.g. "EV0102A") to a real file path. The extracted
+## tree lowercases most evimage names, so try common casings before the index.
+func _resolve_cg_image(image_name: String) -> String:
+	if image_name == "":
+		return ""
+	var roots: Array[String] = ["res://assets/evimage", "res://assets/bgimage"]
+	var casings: Array[String] = [image_name, image_name.to_lower(), image_name.to_upper()]
+	for root in roots:
+		for candidate in casings:
+			var path := root + "/" + candidate + ".png"
+			if FileAccess.file_exists(path):
+				return ProjectSettings.globalize_path(path)
+	var resolved := ResourceIndex.resolve_basename("evimage", image_name.to_lower() + ".png")
+	if resolved == "":
+		resolved = ResourceIndex.resolve_basename("evimage", image_name.to_lower())
+	return resolved
+
+
+func _gallery_progress():
+	if _gallery_cache == null:
+		_gallery_cache = GalleryProgress.new()
+	return _gallery_cache
+
+
 func _add_extra_cg_thumbnail(parent: Control, image_path: String) -> void:
+	if image_path == "":
+		# Locked entry: the empty frame from _build_extra_cg_grid stays visible.
+		return
 	var texture := _load_absolute_texture(image_path)
 	if texture == null:
 		return
@@ -915,11 +1121,14 @@ func _build_extra_stand_character_cards(parent: Control) -> void:
 
 func _extra_stand_character_card_positions() -> Array:
 	var positions := []
-	for layer in compiled_ui.get("layers", []):
-		var path := str(layer.get("path", ""))
+	var layers: Array = compiled_ui.get("layers", [])
+	for layer_value in layers:
+		if typeof(layer_value) != TYPE_DICTIONARY:
+			continue
+		var path := str(Dictionary(layer_value).get("path", ""))
 		if not path.begins_with("character_choice_window/##bnt_chara_choice/"):
 			continue
-		positions.append(rect_from_dict(layer.get("rect", {})))
+		positions.append(rect_from_dict(Dictionary(layer_value).get("rect", {})))
 	positions.sort_custom(func(a: Rect2, b: Rect2) -> bool:
 		if is_equal_approx(a.position.y, b.position.y):
 			return a.position.x < b.position.x
@@ -1798,80 +2007,41 @@ func _redraw_scnchart_runtime() -> void:
 
 
 func _draw_scnchart_route_buttons() -> void:
-	var bg_slot := _slot_from_layer_path("chara_btn/bg/off")
-	var on_slot := _slot_from_layer_path("chara_btn/bg/on")
-	var prototype_origin := scaled_rect(Rect2(1580, 75, 137, 86)).position
+	var prototype := _find_object("_route")
+	if prototype.is_empty():
+		return
+	var slots: Dictionary = prototype.get("slots", {})
+	# The `_route` slots are authored against page0's box; every other page is
+	# that design sample shifted onto its `##chara_btn/N` marker.
+	var prototype_origin := scaled_rect(rect_from_dict(_find_object("page0").get("rect", {}))).position
+	if prototype_origin == Vector2.ZERO:
+		prototype_origin = scaled_rect(Rect2(1580, 75, 137, 86)).position
 	for index in range(SCNCHART_ROUTES.size()):
 		var object := _find_object("page" + str(index))
 		if object.is_empty():
 			continue
 		var rect := scaled_rect(rect_from_dict(object.get("rect", {})))
+		if rect.size == Vector2.ZERO:
+			continue
+		var is_active := index == scnchart_page
 		var holder := Control.new()
 		holder.name = "scnchart_route_" + str(index)
 		holder.position = rect.position
 		holder.size = rect.size
 		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		scnchart_runtime_layer.add_child(holder)
-		_add_slot_texture(holder, on_slot if index == scnchart_page else bg_slot, prototype_origin)
-		_add_centered_label(holder, str(SCNCHART_ROUTES[index]), Rect2(Vector2.ZERO, rect.size), 18, Color8(205, 70, 118), true)
+		_add_slot_texture(holder, _slot(slots, ["on" if is_active else "off"]), prototype_origin)
+		_add_slot_texture(holder, _slot(slots, ["n_ipage" + str(index) if is_active else "f_ipage" + str(index)]), prototype_origin)
+		_add_slot_texture(holder, _slot(slots, ["n_tpage" + str(index) if is_active else "f_tpage" + str(index)]), prototype_origin)
+		_add_scnchart_route_hitbox(rect, index)
 
 
-func _draw_scnchart_nodes() -> void:
-	var section := _find_object("section")
-	var subsection := _find_object("subsection")
-	var section_slots: Dictionary = section.get("slots", {})
-	var subsection_slots: Dictionary = subsection.get("slots", {})
-	var section_origin := _prototype_origin(section, section)
-	var subsection_origin := _prototype_origin(subsection, subsection)
-	var visible_count := 7
-	var start_index := clampi(scnchart_scroll, 0, max(0, SCNCHART_NODE_TITLES.size() - visible_count))
-	for i in range(visible_count):
-		var node_index := start_index + i
-		if node_index >= SCNCHART_NODE_TITLES.size():
-			break
-		var is_selected := node_index == scnchart_selected
-		var source_rect := Rect2(640, 185 + i * 92, 435 if i == 0 else 274, 74)
-		var rect := scaled_rect(source_rect)
-		var holder := Control.new()
-		holder.name = "scnchart_node_" + str(node_index)
-		holder.position = rect.position
-		holder.size = rect.size
-		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		scnchart_runtime_layer.add_child(holder)
-		if i == 0:
-			_add_slot_texture(holder, _slot(section_slots, ["over" if is_selected else "off/toggle"]), section_origin)
-		else:
-			_add_slot_texture(holder, _slot(subsection_slots, ["over" if is_selected else "off/toggle"]), subsection_origin)
-		var prefix := "★ " if is_selected else ""
-		var title := prefix + str(SCNCHART_NODE_TITLES[node_index])
-		_add_centered_label(holder, title, Rect2(48, 10, rect.size.x - 64, rect.size.y - 20), 16, Color8(125, 71, 103), false)
-		_add_scnchart_node_hitbox(source_rect, node_index)
-		if node_index == 5:
-			_draw_scnchart_branch_marker(Vector2(source_rect.position.x + source_rect.size.x + 18, source_rect.position.y + 6))
-
-
-func _draw_scnchart_branch_marker(source_position: Vector2) -> void:
-	var slot := _slot_from_layer_path("btn/branch")
-	if slot.is_empty():
-		return
-	var marker := Control.new()
-	marker.name = "scnchart_branch_marker"
-	var rect := scaled_rect(Rect2(source_position, Vector2(65, 62)))
-	marker.position = rect.position
-	marker.size = rect.size
-	marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	scnchart_runtime_layer.add_child(marker)
-	var origin := scaled_rect(rect_from_dict(slot.get("rect", {}))).position
-	_add_slot_texture(marker, slot, origin)
-
-
-func _add_scnchart_node_hitbox(source_rect: Rect2, node_index: int) -> void:
-	var rect := scaled_rect(source_rect)
+func _add_scnchart_route_hitbox(target_rect: Rect2, page_index: int) -> void:
 	var button := Button.new()
-	button.name = "scnchart_node_hit_" + str(node_index)
+	button.name = "scnchart_route_hit_" + str(page_index)
 	button.text = ""
-	button.position = rect.position
-	button.size = rect.size
+	button.position = target_rect.position
+	button.size = target_rect.size
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	var empty := StyleBoxEmpty.new()
@@ -1881,10 +2051,171 @@ func _add_scnchart_node_hitbox(source_rect: Rect2, node_index: int) -> void:
 	button.add_theme_stylebox_override("focus", empty)
 	button.pressed.connect(func() -> void:
 		AudioManager.play_sysse("chg1")
-		scnchart_selected = node_index
+		scnchart_page = page_index
+		scnchart_scroll = 0
+		scnchart_selected = 0
 		_redraw_scnchart_runtime()
 	)
 	scnchart_runtime_layer.add_child(button)
+
+
+func _draw_scnchart_nodes() -> void:
+	var visible_count := SCNCHART_VISIBLE_NODES
+	var start_index := clampi(scnchart_scroll, 0, max(0, SCNCHART_NODE_TITLES.size() - visible_count))
+	var viewport := _scnchart_chart_viewport()
+	var holder := Control.new()
+	holder.name = "scnchart_node_list"
+	holder.position = viewport.position
+	holder.size = viewport.size
+	# The original chart lives inside the `#scroll` layer, which clips whatever
+	# scrolled past its bounds (scnchart_ui.tjs `updateScrollView`).
+	holder.clip_contents = true
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scnchart_runtime_layer.add_child(holder)
+	var step := scaled_rect(Rect2(0, 0, 0, SCNCHART_ITEM_STEP)).size.y
+	# The row templates are single design samples anchored at the vertical centre
+	# of the chart: a 7-row stack centred in `#scroll` puts its middle row back on
+	# the template's own y (982/2 - 74/2 ~= 454 vs the authored 459).
+	var template_probe := scaled_rect(_scnchart_template_rect(true))
+	var stack_height := step * float(visible_count - 1) + template_probe.size.y
+	var stack_top := viewport.position.y + maxf(0.0, (viewport.size.y - stack_height) * 0.5) - step * float(start_index)
+	var previous_local := Rect2()
+	for i in range(visible_count):
+		var row_index := start_index + i
+		if row_index >= SCNCHART_NODE_TITLES.size():
+			break
+		var is_section := row_index == 0
+		# A row is the authored template texture translated along the chart's own
+		# scroll axis; the template keeps its design coordinates so every slot
+		# texture still lines up with its own `rect`.
+		var template := scaled_rect(_scnchart_template_rect(is_section))
+		var local := Rect2(
+			Vector2(template.position.x - viewport.position.x, stack_top - viewport.position.y + step * float(i)),
+			template.size
+		)
+		if i > 0:
+			_add_scnchart_connector(holder, previous_local, local)
+		previous_local = local
+		var is_selected := row_index == scnchart_selected
+		var row := Control.new()
+		row.name = "scnchart_node_" + str(row_index)
+		row.position = local.position
+		row.size = local.size
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_child(row)
+		var slots: Dictionary = _find_object("section" if is_section else "subsection").get("slots", {})
+		var origin := template.position
+		_add_slot_texture(row, _slot(slots, ["over" if is_selected else "off/toggle", "off"]), origin)
+		var text_slot: Dictionary = slots.get("text:rect", {})
+		var label_rect := Rect2(0.0, 8.0, template.size.x, template.size.y - 16.0)
+		if not text_slot.is_empty():
+			var text_rect := scaled_rect(rect_from_dict(text_slot.get("rect", {})))
+			if text_rect.size != Vector2.ZERO:
+				label_rect = Rect2(text_rect.position - origin, text_rect.size)
+		var prefix := "★ " if is_selected else ""
+		_add_centered_label(row, prefix + str(SCNCHART_NODE_TITLES[row_index]), label_rect, 16, Color8(125, 71, 103), false)
+		if row_index == 5:
+			_draw_scnchart_branch_marker(holder, local)
+	_add_scnchart_node_reveal_buttons(start_index, visible_count, step, stack_top)
+
+
+## The chart's scroll-axis step and the PSD template anchor come from the
+## original data, not from hand-tuned numbers: `default.tjs`
+## `.scnchartUiItemConsts` gives `section/subsection step:(100)` (with
+## `firstofs step:(80)`), and the `section`/`subsection` objects in
+## `scnchart.ini` are the designer's templates for a node row.
+func _scnchart_template_rect(is_section: bool) -> Rect2:
+	var object := _find_object("section" if is_section else "subsection")
+	var slots: Dictionary = object.get("slots", {})
+	var slot: Dictionary = slots.get("rect", {})
+	var rect := rect_from_dict(slot.get("rect", {}))
+	if rect.size == Vector2.ZERO:
+		rect = SCNCHART_SECTION_FALLBACK if is_section else SCNCHART_SUBSECTION_FALLBACK
+	return rect
+
+
+func _scnchart_chart_viewport() -> Rect2:
+	var object := _find_object("scroll")
+	var rect := rect_from_dict(object.get("rect", {}))
+	if rect.size == Vector2.ZERO:
+		rect = SCNCHART_SCROLL_FALLBACK
+	return scaled_rect(rect)
+
+
+func _add_scnchart_connector(parent: Control, from_local: Rect2, to_local: Rect2) -> void:
+	var gap_top := from_local.position.y + from_local.size.y
+	var gap_bottom := to_local.position.y
+	if gap_bottom <= gap_top:
+		return
+	var line := ColorRect.new()
+	line.name = "scnchart_connector"
+	line.color = SCNCHART_LINE_COLOR
+	line.position = Vector2(from_local.position.x + 16.0, gap_top)
+	line.size = Vector2(3.0, gap_bottom - gap_top)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(line)
+
+
+func _draw_scnchart_branch_marker(parent: Control, row_local: Rect2) -> void:
+	var branch := _find_object("branch")
+	var slot: Dictionary = branch.get("slots", {}).get("rect", {})
+	if slot.is_empty():
+		slot = _slot_from_layer_path("btn/branch")
+	if slot.is_empty():
+		return
+	var design := rect_from_dict(slot.get("rect", {}))
+	if design.size == Vector2.ZERO:
+		return
+	# `branch` is a chart item of its own in `scnchart_ui.tjs` (`spread`, its own
+	# `step`), sized 65x62 against a 274-wide row.  The PSD parks its single
+	# sample overlapping the row's left third purely as a layout sample, so draw
+	# it as a badge beside the row instead of over the label.
+	var size := scaled_rect(design).size
+	var marker := Control.new()
+	marker.name = "scnchart_branch_marker"
+	marker.position = Vector2(row_local.position.x + row_local.size.x + 8.0, row_local.position.y + (row_local.size.y - size.y) * 0.5)
+	marker.size = size
+	marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(marker)
+	# origin = the slot's own scaled position: the texture then fills `marker`
+	# exactly, independent of the scrolled row's coordinates.
+	_add_slot_texture(marker, slot, scaled_rect(design).position)
+
+
+func _add_scnchart_node_reveal_buttons(start_index: int, visible_count: int, step: float, stack_top: float) -> void:
+	var viewport := _scnchart_chart_viewport()
+	for i in range(visible_count):
+		var row_index := start_index + i
+		if row_index >= SCNCHART_NODE_TITLES.size():
+			break
+		var template := scaled_rect(_scnchart_template_rect(row_index == 0))
+		var local := Rect2(
+			Vector2(template.position.x - viewport.position.x, stack_top - viewport.position.y + step * float(i)),
+			template.size
+		)
+		# Clip to the chart viewport: a row scrolled past the panel must not stay
+		# clickable outside it.
+		var visible := local.intersection(Rect2(Vector2.ZERO, viewport.size))
+		if visible.size.x <= 1.0 or visible.size.y <= 1.0:
+			continue
+		var button := Button.new()
+		button.name = "scnchart_node_hit_" + str(row_index)
+		button.text = ""
+		button.position = viewport.position + visible.position
+		button.size = visible.size
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_filter = Control.MOUSE_FILTER_STOP
+		var empty := StyleBoxEmpty.new()
+		button.add_theme_stylebox_override("normal", empty)
+		button.add_theme_stylebox_override("hover", empty)
+		button.add_theme_stylebox_override("pressed", empty)
+		button.add_theme_stylebox_override("focus", empty)
+		button.pressed.connect(func() -> void:
+			AudioManager.play_sysse("chg1")
+			scnchart_selected = row_index
+			_redraw_scnchart_runtime()
+		)
+		scnchart_runtime_layer.add_child(button)
 
 
 func _draw_scnchart_scroll_controls() -> void:
@@ -1896,18 +2227,26 @@ func _draw_scnchart_scroll_controls() -> void:
 	]:
 		_add_scnchart_updown_button(str(item["name"]), str(item["slot"]))
 	var knob_slot := _slot_from_layer_path("scrollbar/knob/off")
-	if not knob_slot.is_empty():
-		var max_scroll: int = max(1, SCNCHART_NODE_TITLES.size() - 7)
-		var y: float = lerpf(160.0, 760.0, float(scnchart_scroll) / float(max_scroll))
-		var knob := Control.new()
-		knob.name = "scnchart_scroll_knob"
-		var rect := scaled_rect(Rect2(1492, y, 20, 100))
-		knob.position = rect.position
-		knob.size = rect.size
-		knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		scnchart_runtime_layer.add_child(knob)
-		var origin := scaled_rect(rect_from_dict(knob_slot.get("rect", {}))).position
-		_add_slot_texture(knob, knob_slot, origin)
+	if knob_slot.is_empty():
+		return
+	var knob_rect := scaled_rect(rect_from_dict(knob_slot.get("rect", {})))
+	# `slider:rect` is the authored travel of the knob inside the rail
+	# (scnchart.ini: `ui,scrollbar/#arrow, @slider:rect`).
+	var slider := _find_object("slider")
+	var rail_slot: Dictionary = slider.get("slots", {}).get("rect", {})
+	var rail := scaled_rect(rect_from_dict(rail_slot.get("rect", {})))
+	if rail.size == Vector2.ZERO:
+		rail = Rect2(994.0, 92.7, 13.3, 488.7)
+	var max_scroll: int = max(1, SCNCHART_NODE_TITLES.size() - SCNCHART_VISIBLE_NODES)
+	var travel := maxf(0.0, rail.size.y - knob_rect.size.y)
+	var y := rail.position.y + travel * (float(scnchart_scroll) / float(max_scroll))
+	var knob := Control.new()
+	knob.name = "scnchart_scroll_knob"
+	knob.position = Vector2(rail.position.x, y)
+	knob.size = knob_rect.size
+	knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scnchart_runtime_layer.add_child(knob)
+	_add_slot_texture(knob, knob_slot, knob.position)
 
 
 func _add_scnchart_updown_button(object_name: String, icon_slot_name: String) -> void:
@@ -1961,9 +2300,65 @@ func _draw_scnchart_preview() -> void:
 	var route := str(SCNCHART_ROUTES[scnchart_page])
 	var node := str(SCNCHART_NODE_TITLES[scnchart_selected])
 	var text := route + "ルート\n" + node + "\n\n選択中の分岐地点です。\nJUMPで再開します。"
-	var preview_label := _add_runtime_label(scnchart_runtime_layer, text, scaled_rect(Rect2(78, 560, 458, 210)), 18, Color8(176, 104, 136), HORIZONTAL_ALIGNMENT_LEFT)
+	# `playback:text:rect` is the authored text box inside the preview panel
+	# (scnchart.ini: `ui,bg/#previewtext, @playback:text:rect`).
+	var playback := _find_object("playback")
+	var text_slot: Dictionary = playback.get("slots", {}).get("text:rect", {})
+	var preview_rect := scaled_rect(rect_from_dict(text_slot.get("rect", {})))
+	if preview_rect.size == Vector2.ZERO:
+		preview_rect = scaled_rect(Rect2(79, 560, 458, 302))
+	var preview_label := _add_runtime_label(scnchart_runtime_layer, text, preview_rect, 18, Color8(176, 104, 136), HORIZONTAL_ALIGNMENT_LEFT)
 	preview_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	_add_centered_label(scnchart_runtime_layer, route + " Chapter", scaled_rect(Rect2(650, 72, 756, 54)), 25, Color8(205, 70, 118), true)
+	var separator := _find_object("separator")
+	var title_slot: Dictionary = separator.get("slots", {}).get("text:rect", {})
+	var title_rect := scaled_rect(rect_from_dict(title_slot.get("rect", {})))
+	if title_rect.size == Vector2.ZERO:
+		title_rect = scaled_rect(Rect2(791, 73, 494, 45))
+	_add_centered_label(scnchart_runtime_layer, route + " Chapter", title_rect, 25, Color8(205, 70, 118), true)
+
+
+## The minimap is drawn, not authored: `#minimap` is `rect/layer` with no PNG and
+## `scnchartUiLineConsts` supplies its palette (miniline 0x80a987c8,
+## minichapt 0xC0eddbe6, minimap brush 0xFFa987c8).  It shows the whole route with
+## the rows the scroll view is currently showing.
+func _draw_scnchart_minimap() -> void:
+	var object := _find_object("minimap")
+	var slot: Dictionary = object.get("slots", {}).get("rect/layer", {})
+	var minimap := scaled_rect(rect_from_dict(slot.get("rect", {})))
+	if minimap.size == Vector2.ZERO:
+		minimap = scaled_rect(Rect2(1604, 506, 242, 377))
+	var holder := Control.new()
+	holder.name = "scnchart_minimap"
+	holder.position = minimap.position
+	holder.size = minimap.size
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scnchart_runtime_layer.add_child(holder)
+	var count := SCNCHART_NODE_TITLES.size()
+	if count <= 0:
+		return
+	var row_height := 6.0
+	var pitch := (minimap.size.y - row_height) / maxf(1.0, float(count - 1))
+	var view := ColorRect.new()
+	view.name = "scnchart_minimap_view"
+	view.color = Color(1.0, 1.0, 1.0, 0.22)
+	view.position = Vector2(0.0, float(scnchart_scroll) * pitch - 4.0)
+	view.size = Vector2(minimap.size.x, pitch * float(SCNCHART_VISIBLE_NODES - 1) + row_height + 8.0)
+	view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(view)
+	for index in range(count):
+		var bar := ColorRect.new()
+		bar.name = "scnchart_minimap_bar_" + str(index)
+		if index == scnchart_selected:
+			bar.color = SCNCHART_MINIMAP_SELECTED_COLOR
+		elif index == 5:
+			bar.color = SCNCHART_LINE_QUERY_COLOR
+		else:
+			bar.color = SCNCHART_MINIMAP_COLOR
+		var width := minimap.size.x * (0.78 if index == scnchart_selected else 0.5)
+		bar.position = Vector2((minimap.size.x - width) * 0.5, float(index) * pitch)
+		bar.size = Vector2(width, row_height)
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_child(bar)
 
 
 func _handle_scnchart_action(action_name: String) -> bool:

@@ -53,7 +53,8 @@
 - [ ] `cgviewlist` / CG 鉴赏。
 - [ ] `extra_sound` / 音乐鉴赏。
 - [ ] `extra_scene` / 回想。
-- [ ] `scnchart` / 流程图：PIMG/PNG/compiled JSON 已补齐，静态面板预览已通过，路线节点数据未接。
+- [x] `scnchart` / 流程图：PIMG/PNG/compiled JSON 已补齐；节点区改为对象驱动布局（`section`/`subsection` 模板 + `default.tjs` 的 `step:(100)` 行距，行栈在 `#scroll` 视口内居中裁切），页签/滑块/预览/分支标记均按 ini 坐标与 `func,visible,false` 模板规则，路线节点数据已接（`docs/scnchart_extra_stand_fix.md`、`tools/qa_scnchart_layout.gd`）。
+- [x] `extra_stand` / 立ち絵鑑賞：布局按 ini 对象坐标；`btn_control` 六个操作按钮底板补齐（PIMG `same_image` 别名图层，`docs/scnchart_extra_stand_fix.md`）；角色选择弹窗（15 张角色卡）、锁定/删除/前后页控件可用。
 - [ ] `mapsel` / 地图选择。
 
 ## 阶段 5：VN 运行时
@@ -66,9 +67,13 @@
       （docs/plan/PLAN_P1_SCN_JSON_AND_STANDS.md §1）
 - [x] 实现选择支与分支引擎：解析 `scenes[].selects`（对话/地图两型 UI、eval 过滤、selidx 排序）、`SetBranchFlags/CheckBranchFlags` 标志状态机（`tools/compile_branch_flags.py` 编译 `scnchartdata.tjs` → `branch_flags.json`）、`nexts[].eval` 分支求值、跨文件跳转与 gameend 返回标题（`docs/plan/PLAN_P0_BRANCH_ENGINE.md`）。
 - [x] 实现存档 v2：branch_flags / selection_history / last_branch_decision / 挂起选择随档恢复，旧档零迁移。
-- [x] 分支轨迹基线：`qa/traces/godot_branch_trace.json`（st04_04 佐奈选择 → st04_05 acc_san 判定），export/verify 支持多基线参数。
-- [ ] 实现文本框、名字框、打字机、语音同步。
-- [ ] 实现 Ctrl 快进、自动播放、回看、跳过已读。
+- [x] 分支轨迹基线：`qa/traces/godot_branch_trace.json`（st04_04 佐奈选择 → st04_05 acc_san 判定），export/verify 支持多基线参数；第三条 `qa/traces/godot_map_route_trace.json`（st02_03 地图选择 → sn_map01 → st02_04，60 帧）已于 2026-09-11 按 `assets/audio/bgm/` 新路径与立绘还原后的状态重录。
+- [x] 实现文本框、名字框、打字机、语音同步。
+      打字机逐字显现 + 点击补全两段式(PLAN_P2 §1),速度由 `textspeed` 滑条驱动;
+      即时模式与存档回放一次性显示。Auto 模式等待由 `autospeed` 驱动。
+- [x] 实现 Ctrl 快进、自动播放、回看、跳过已读。
+      Ctrl 快进与 Auto 已可用(快进经 advance 先补全再推进);回看 = backlog
+      跳转(已有);跳过已读(readskip)的设置项已在 SystemSettings,运行时未接。
 - [ ] 实现存档、读档、章节状态、CG/BGM 解锁。（存读档与回放恢复已可用；章节/解锁状态未接）
 
 ## 阶段 6：完整内容接入

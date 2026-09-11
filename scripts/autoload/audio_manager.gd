@@ -1,5 +1,6 @@
 extends Node
 
+const SliParser := preload("res://scripts/story/sli_parser.gd")
 const SYSSE_DIR := "res://assets/audio/sysse/"
 const BGM_DIR := "res://assets/audio/bgm/"
 
@@ -78,13 +79,33 @@ func play_bgm(name: String) -> void:
 	var stream := _load_ogg(BGM_DIR + name + ".ogg")
 	if stream == null:
 		return
-	var ogg_stream := stream as AudioStreamOggVorbis
-	if ogg_stream != null:
-		ogg_stream.loop = true
+	_apply_loop_points(stream, BGM_DIR + name + ".ogg")
 	bgm_player.stream = stream
 	bgm_player.volume_db = _volume_db(master_volume * bgm_volume)
 	bgm_player.play()
 	current_bgm = name
+
+
+## Apply WaveLoopManager `.sli` loop points when the sidecar exists, so the
+## track loops at the authored sabi segment instead of restarting from the top
+## (docs/sli_loop.md).
+func _apply_loop_points(stream: AudioStream, audio_path: String) -> void:
+	var ogg := stream as AudioStreamOggVorbis
+	if ogg == null:
+		return
+	ogg.loop = true
+	var parser := SliParser.new()
+	if not parser.load_for_audio(audio_path):
+		return
+	# AudioStreamOggVorbis exposes no sample-rate property in Godot 4.6; the
+	# shipped .sli files are authored against 44.1 kHz (verified via ffprobe).
+	var rate := 44100.0
+	var loop := parser.loop_seconds(rate)
+	if loop.is_empty():
+		return
+	# Only loop_offset exists (no loop_end): the loop-ready copy is already
+	# truncated at the sli `From`, so offset = To reproduces [To, From].
+	ogg.loop_offset = float(loop["begin"])
 
 
 func stop_bgm() -> void:

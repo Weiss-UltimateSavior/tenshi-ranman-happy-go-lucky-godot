@@ -321,17 +321,66 @@ def parse_func(screen: str) -> dict:
     return {"path": str(func_path), "actions": actions}
 
 
+def presentation_size(pimg_width: int, pimg_height: int) -> dict:
+    """Size the PIMG design space is presented at.
+
+    Some PSDs (`scnchart`, `window`, `window_h`) are authored on the extended
+    canvas height (`config.tjs: exHeight = 1440`) while the game screen is
+    1920x1080 (`config.tjs: FullHDMode -> scWidth/scHeight`).  Scaling those by
+    the raw PSD height squashed everything vertically to half height.  Anything
+    drawn on the taller canvas simply bleeds below the screen, which is what the
+    original does too (the message window's base sits at y=750..1170).
+    Genuinely small part-canvases (`file_data`, `gesture_help`, `touchuibar`)
+    keep their own box so their own scale stays 1:1-ish.
+    """
+    if pimg_width == 1920 and pimg_height > 1080:
+        return {"w": 1920, "h": 1080}
+    return {"w": pimg_width, "h": pimg_height}
+
+
+def shared_image_pairs(screen: str) -> list:
+    """PIMG layers that reuse another layer's pixels carry only `same_image`.
+
+    The companion PNG extractor writes a single PNG for the source layer, so the
+    alias would end up with no texture on disk.  Materialize them here so a
+    regenerate on any machine keeps the same asset set; see
+    `tools/export_pimg_shared_images.py` for the standalone repair pass.
+    """
+    raw = PIMG_JSON_DIR / f"{screen}.json"
+    if not raw.exists():
+        return []
+    data = json.loads(raw.read_text(encoding="utf-8"))
+    pairs = []
+    for layer in data.get("layers", []):
+        if not isinstance(layer, dict):
+            continue
+        source = layer.get("same_image")
+        if source is not None:
+            pairs.append((int(layer["layer_id"]), int(source)))
+    return pairs
+
+
 def copy_png_layers(screen: str) -> dict:
     src = PIMG_PNG_DIR / screen
     dst = EXPORT_DIR / screen / "layers"
     if not src.exists():
-        return {"copied": 0, "src": str(src), "dst": str(dst)}
+        return {"copied": 0, "aliased": 0, "src": str(src), "dst": str(dst)}
     dst.mkdir(parents=True, exist_ok=True)
     copied = 0
     for png in src.glob("*.png"):
         shutil.copy2(png, dst / png.name)
         copied += 1
-    return {"copied": copied, "src": str(src), "dst": str(dst)}
+    aliased = 0
+    for alias_id, source_id in shared_image_pairs(screen):
+        alias_path = dst / f"{alias_id}.png"
+        source_path = dst / f"{source_id}.png"
+        if alias_path.exists() or not source_path.exists():
+            continue
+        shutil.copy2(source_path, alias_path)
+        aliased += 1
+    if aliased:
+        print(f"  materialized {aliased} shared-image layer(s) for {screen}")
+    return {"copied": copied, "aliased": aliased, "src": str(src), "dst": str(dst)}
 
 
 def compile_screen(screen: str) -> dict:
@@ -341,7 +390,7 @@ def compile_screen(screen: str) -> dict:
     func = parse_func(screen)
     compiled = {
         "screen": screen,
-        "source_size": {"w": pimg["width"], "h": pimg["height"]},
+        "source_size": presentation_size(pimg["width"], pimg["height"]),
         "target_size": {"w": 1280, "h": 720},
         "layer_dir": f"res://assets/ui/exported/{screen}/layers/",
         "layers": pimg["layers"],
@@ -357,6 +406,7 @@ def compile_screen(screen: str) -> dict:
             "macros": len(ini["macros"]),
             "actions": len(func["actions"]),
             "png_layers": copied["copied"],
+            "png_aliases": copied.get("aliased", 0),
         },
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
