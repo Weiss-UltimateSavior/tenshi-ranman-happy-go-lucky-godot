@@ -1,0 +1,718 @@
+{
+ "format": "tenshin-fgimage-relocation-v1",
+ "note": "PBD 元数据(72=64 relocated + 8 原位/重复)与整身合成图归位清单",
+ "counts": {
+  "pbd_meta": 68,
+  "body_image": 60
+ },
+ "entries": [
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/まひろ/まひろ_ポーズa_1.pbd",
+   "size": 3848,
+   "sha256_16": "c73f9f760e87ad90"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/まひろ/まひろ_ポーズa_3.pbd",
+   "size": 3833,
+   "sha256_16": "4ad5ca2175265359"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/まひろ/まひろ_ポーズb_1.pbd",
+   "size": 2610,
+   "sha256_16": "fb167b2a2c504f13"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/まひろ/まひろ_ポーズb_3.pbd",
+   "size": 2675,
+   "sha256_16": "dc0a71576ddec978"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/ルリ/ルリ_キツネ服耳あり_ポーズa_1.pbd",
+   "size": 2510,
+   "sha256_16": "c7c98e7eced2c938"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/ルリ/ルリ_キツネ服耳あり_ポーズa_3.pbd",
+   "size": 2442,
+   "sha256_16": "1454141e7ee8770b"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/ルリ/ルリ_キツネ服耳あり_ポーズb_1.pbd",
+   "size": 2350,
+   "sha256_16": "d0009984eebab938"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/ルリ/ルリ_キツネ服耳あり_ポーズb_3.pbd",
+   "size": 2315,
+   "sha256_16": "6862483e46c1b8ab"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/ルリ/ルリ_ポーズa_1.pbd",
+   "size": 3867,
+   "sha256_16": "8d713838365a5860"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/ルリ/ルリ_ポーズa_3.pbd",
+   "size": 3802,
+   "sha256_16": "9e8c0cd09b18a9ba"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/ルリ/ルリ_ポーズb_1.pbd",
+   "size": 3380,
+   "sha256_16": "84ca0133b6550ec3"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/ルリ/ルリ_ポーズb_3.pbd",
+   "size": 3358,
+   "sha256_16": "1f844ea6b061a475"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/佐奈/佐奈_ポーズa_1.pbd",
+   "size": 5032,
+   "sha256_16": "7f69606a324dcb4a"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/佐奈/佐奈_ポーズa_3.pbd",
+   "size": 5008,
+   "sha256_16": "0ee95ba2eb41402c"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/佐奈/佐奈_ポーズb_1.pbd",
+   "size": 3395,
+   "sha256_16": "dc482b4ea73873a4"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/佐奈/佐奈_ポーズb_3.pbd",
+   "size": 3440,
+   "sha256_16": "20044a880ce65f1c"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/庵/庵_ポーズＡ_1.pbd",
+   "size": 3372,
+   "sha256_16": "16236293edf1a681"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/庵/庵_ポーズＡ_3.pbd",
+   "size": 3382,
+   "sha256_16": "3ac3c4c0d4398bf7"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/春樹/春樹_ポーズa_1.pbd",
+   "size": 2353,
+   "sha256_16": "8c0cec8fb1a40170"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/春樹/春樹_ポーズa_3.pbd",
+   "size": 2379,
+   "sha256_16": "c0186a9e700a7651"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/朋花/朋花_ポーズa_1.pbd",
+   "size": 3280,
+   "sha256_16": "73d8b96eb82b8c9d"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/朋花/朋花_ポーズa_3.pbd",
+   "size": 3279,
+   "sha256_16": "89370f84b06de387"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/朋花/朋花_水着_ポーズa_1.pbd",
+   "size": 2723,
+   "sha256_16": "47d7c5e4909cc3a0"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/朋花/朋花_水着_ポーズa_3.pbd",
+   "size": 2736,
+   "sha256_16": "e7c947f028a85b0b"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/朋花/朋花_私服夏_ポーズa_1.pbd",
+   "size": 2739,
+   "sha256_16": "04945981d0705864"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/朋花/朋花_私服夏_ポーズa_3.pbd",
+   "size": 2743,
+   "sha256_16": "fd16da8d8c6975b6"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/朋花/朋花_私服春_ポーズa_1.pbd",
+   "size": 2718,
+   "sha256_16": "a355854b5b8e143e"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/朋花/朋花_私服春_ポーズa_3.pbd",
+   "size": 2694,
+   "sha256_16": "14598be0459799c4"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/渉/渉_ポーズa_1.pbd",
+   "size": 2644,
+   "sha256_16": "f8d7ba99706fb4d4"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/渉/渉_ポーズa_3.pbd",
+   "size": 2621,
+   "sha256_16": "04a125eb9fd74adb"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/眞一郎/眞一郎_ポーズa_1.pbd",
+   "size": 2888,
+   "sha256_16": "35134547a83ff87c"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/眞一郎/眞一郎_ポーズa_3.pbd",
+   "size": 2904,
+   "sha256_16": "1e8464ad8f046286"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/神様/神様_ポーズa_1.pbd",
+   "size": 4449,
+   "sha256_16": "79aacda9737e0070"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/神様/神様_ポーズa_3.pbd",
+   "size": 4460,
+   "sha256_16": "0425caa357d8a863"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/神様/神様_ポーズb_1.pbd",
+   "size": 3038,
+   "sha256_16": "8dce70bf5a781b32"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/神様/神様_ポーズb_3.pbd",
+   "size": 3019,
+   "sha256_16": "ac02e878bd6e28fc"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/紫/紫_ポーズa_1.pbd",
+   "size": 3491,
+   "sha256_16": "39ed078c39557861"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/紫/紫_ポーズa_3.pbd",
+   "size": 3456,
+   "sha256_16": "e48ef03684d50005"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/紫/紫_ポーズb_1.pbd",
+   "size": 2412,
+   "sha256_16": "b66f3566d37efb58"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/紫/紫_ポーズb_3.pbd",
+   "size": 2400,
+   "sha256_16": "75c81765853a40f9"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/紫/紫_水着_ポーズa__1.pbd",
+   "size": 3075,
+   "sha256_16": "57e8069f4306bdc1"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/紫/紫_水着_ポーズa__3.pbd",
+   "size": 3100,
+   "sha256_16": "40b5b2015b2c15a1"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/紫/紫_水着_ポーズb_1.pbd",
+   "size": 2085,
+   "sha256_16": "614b3849c8e134c6"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/紫/紫_水着_ポーズb_3.pbd",
+   "size": 2123,
+   "sha256_16": "c4cf1b97406bcd82"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/老竹/幹雄_ポーズa_1.pbd",
+   "size": 1983,
+   "sha256_16": "218e9586839376ad"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/老竹/幹雄_ポーズa_3.pbd",
+   "size": 1966,
+   "sha256_16": "79baa015028ea339"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/老竹/幹雄_腕差分_ポーズa_1.pbd",
+   "size": 1948,
+   "sha256_16": "d80aded8e5bddf7c"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/老竹/幹雄_腕差分_ポーズa_3.pbd",
+   "size": 1950,
+   "sha256_16": "fc044d787a38ca18"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/若葉/若葉_ポーズa_1.pbd",
+   "size": 4913,
+   "sha256_16": "7b83066fb663ee87"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/若葉/若葉_ポーズa_3.pbd",
+   "size": 4920,
+   "sha256_16": "f880775f417614bb"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/若葉/若葉_ポーズb_1.pbd",
+   "size": 2902,
+   "sha256_16": "8ec49d1074535c8d"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/若葉/若葉_ポーズb_3.pbd",
+   "size": 3022,
+   "sha256_16": "3f22fdd16c083cfe"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/葵/葵_ポーズa_1.pbd",
+   "size": 4163,
+   "sha256_16": "14794a7f0fbfb5c4"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/葵/葵_ポーズa_3.pbd",
+   "size": 4142,
+   "sha256_16": "72d8327831daeed2"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/葵/葵_ポーズＢ_1.pbd",
+   "size": 3940,
+   "sha256_16": "34615d3876a562f4"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/葵/葵_ポーズＢ_3.pbd",
+   "size": 3999,
+   "sha256_16": "8f1ca87d0eddb56d"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/蘇芳/蘇芳_ポーズＡ_1.pbd",
+   "size": 3465,
+   "sha256_16": "e06dc9de35c6a40b"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/蘇芳/蘇芳_ポーズＡ_3.pbd",
+   "size": 3387,
+   "sha256_16": "740e7e71f1ac89fc"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/蘇芳/蘇芳_ポーズＢ_1.pbd",
+   "size": 2889,
+   "sha256_16": "10cd46f70df8a4bd"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/蘇芳/蘇芳_ポーズＢ_3.pbd",
+   "size": 2813,
+   "sha256_16": "2119b072a27aeb2a"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/虎太郎/虎太郎_ポーズa_1.pbd",
+   "size": 3281,
+   "sha256_16": "e0685178671d8e8b"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/虎太郎/虎太郎_ポーズa_3.pbd",
+   "size": 3186,
+   "sha256_16": "2643c96c7d39c90e"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/虎太郎/虎太郎_腕差分_ポーズa_1.pbd",
+   "size": 3058,
+   "sha256_16": "725a2f0b859e652c"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "pbd_meta/虎太郎/虎太郎_腕差分_ポーズa_3.pbd",
+   "size": 2984,
+   "sha256_16": "73c6b82d49c28209"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "まひろ/まひろ_ポーズa_1.pbd",
+   "size": 3848,
+   "sha256_16": "c73f9f760e87ad90"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "まひろ/まひろ_ポーズa_3.pbd",
+   "size": 3833,
+   "sha256_16": "4ad5ca2175265359"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "まひろ/まひろ_ポーズb_1.pbd",
+   "size": 2610,
+   "sha256_16": "fb167b2a2c504f13"
+  },
+  {
+   "kind": "pbd_meta",
+   "path": "まひろ/まひろ_ポーズb_3.pbd",
+   "size": 2675,
+   "sha256_16": "dc0a71576ddec978"
+  },
+  {
+   "kind": "body_image",
+   "path": "ルリ/ルリ_キツネ服耳あり_ポーズa_1_body.png",
+   "size": 3830683
+  },
+  {
+   "kind": "body_image",
+   "path": "ルリ/ルリ_キツネ服耳あり_ポーズa_3_body.png",
+   "size": 5506023
+  },
+  {
+   "kind": "body_image",
+   "path": "ルリ/ルリ_キツネ服耳あり_ポーズb_1_body.png",
+   "size": 22014661
+  },
+  {
+   "kind": "body_image",
+   "path": "ルリ/ルリ_キツネ服耳あり_ポーズb_3_body.png",
+   "size": 5832506
+  },
+  {
+   "kind": "body_image",
+   "path": "ルリ/ルリ_ポーズa_1_body.png",
+   "size": 23314020
+  },
+  {
+   "kind": "body_image",
+   "path": "ルリ/ルリ_ポーズa_3_body.png",
+   "size": 3133006
+  },
+  {
+   "kind": "body_image",
+   "path": "ルリ/ルリ_ポーズb_1_body.png",
+   "size": 8371435
+  },
+  {
+   "kind": "body_image",
+   "path": "ルリ/ルリ_ポーズb_3_body.png",
+   "size": 1876356
+  },
+  {
+   "kind": "body_image",
+   "path": "佐奈/佐奈_ポーズa_1_body.png",
+   "size": 7448173
+  },
+  {
+   "kind": "body_image",
+   "path": "佐奈/佐奈_ポーズa_3_body.png",
+   "size": 2372225
+  },
+  {
+   "kind": "body_image",
+   "path": "佐奈/佐奈_ポーズb_1_body.png",
+   "size": 9476579
+  },
+  {
+   "kind": "body_image",
+   "path": "佐奈/佐奈_ポーズb_3_body.png",
+   "size": 2589085
+  },
+  {
+   "kind": "body_image",
+   "path": "庵/庵_ポーズＡ_1_body.png",
+   "size": 10339971
+  },
+  {
+   "kind": "body_image",
+   "path": "庵/庵_ポーズＡ_3_body.png",
+   "size": 4702226
+  },
+  {
+   "kind": "body_image",
+   "path": "春樹/春樹_ポーズa_1_body.png",
+   "size": 18769620
+  },
+  {
+   "kind": "body_image",
+   "path": "春樹/春樹_ポーズa_3_body.png",
+   "size": 88760
+  },
+  {
+   "kind": "body_image",
+   "path": "朋花/朋花_ポーズa_1_body.png",
+   "size": 350833
+  },
+  {
+   "kind": "body_image",
+   "path": "朋花/朋花_ポーズa_3_body.png",
+   "size": 103023
+  },
+  {
+   "kind": "body_image",
+   "path": "朋花/朋花_水着_ポーズa_1_body.png",
+   "size": 14769820
+  },
+  {
+   "kind": "body_image",
+   "path": "朋花/朋花_水着_ポーズa_3_body.png",
+   "size": 2770209
+  },
+  {
+   "kind": "body_image",
+   "path": "朋花/朋花_私服夏_ポーズa_1_body.png",
+   "size": 411297
+  },
+  {
+   "kind": "body_image",
+   "path": "朋花/朋花_私服夏_ポーズa_3_body.png",
+   "size": 99615
+  },
+  {
+   "kind": "body_image",
+   "path": "朋花/朋花_私服春_ポーズa_1_body.png",
+   "size": 356701
+  },
+  {
+   "kind": "body_image",
+   "path": "朋花/朋花_私服春_ポーズa_3_body.png",
+   "size": 96457
+  },
+  {
+   "kind": "body_image",
+   "path": "渉/渉_ポーズa_1_body.png",
+   "size": 446505
+  },
+  {
+   "kind": "body_image",
+   "path": "渉/渉_ポーズa_3_body.png",
+   "size": 91018
+  },
+  {
+   "kind": "body_image",
+   "path": "眞一郎/眞一郎_ポーズa_1_body.png",
+   "size": 362583
+  },
+  {
+   "kind": "body_image",
+   "path": "眞一郎/眞一郎_ポーズa_3_body.png",
+   "size": 4761558
+  },
+  {
+   "kind": "body_image",
+   "path": "神様/神様_ポーズa_1_body.png",
+   "size": 18999450
+  },
+  {
+   "kind": "body_image",
+   "path": "神様/神様_ポーズa_3_body.png",
+   "size": 5850123
+  },
+  {
+   "kind": "body_image",
+   "path": "神様/神様_ポーズb_1_body.png",
+   "size": 23356067
+  },
+  {
+   "kind": "body_image",
+   "path": "神様/神様_ポーズb_3_body.png",
+   "size": 4428166
+  },
+  {
+   "kind": "body_image",
+   "path": "紫/紫_ポーズa_1_body.png",
+   "size": 17690586
+  },
+  {
+   "kind": "body_image",
+   "path": "紫/紫_ポーズa_3_body.png",
+   "size": 2141674
+  },
+  {
+   "kind": "body_image",
+   "path": "紫/紫_ポーズb_1_body.png",
+   "size": 8547450
+  },
+  {
+   "kind": "body_image",
+   "path": "紫/紫_ポーズb_3_body.png",
+   "size": 96463
+  },
+  {
+   "kind": "body_image",
+   "path": "紫/紫_水着_ポーズa__1_body.png",
+   "size": 378822
+  },
+  {
+   "kind": "body_image",
+   "path": "紫/紫_水着_ポーズa__3_body.png",
+   "size": 94660
+  },
+  {
+   "kind": "body_image",
+   "path": "紫/紫_水着_ポーズb_1_body.png",
+   "size": 374145
+  },
+  {
+   "kind": "body_image",
+   "path": "紫/紫_水着_ポーズb_3_body.png",
+   "size": 91198
+  },
+  {
+   "kind": "body_image",
+   "path": "老竹/幹雄_ポーズa_1_body.png",
+   "size": 360437
+  },
+  {
+   "kind": "body_image",
+   "path": "老竹/幹雄_ポーズa_3_body.png",
+   "size": 104727
+  },
+  {
+   "kind": "body_image",
+   "path": "老竹/幹雄_腕差分_ポーズa_1_body.png",
+   "size": 417383
+  },
+  {
+   "kind": "body_image",
+   "path": "老竹/幹雄_腕差分_ポーズa_3_body.png",
+   "size": 3830683
+  },
+  {
+   "kind": "body_image",
+   "path": "若葉/若葉_ポーズa_1_body.png",
+   "size": 15310936
+  },
+  {
+   "kind": "body_image",
+   "path": "若葉/若葉_ポーズa_3_body.png",
+   "size": 5043158
+  },
+  {
+   "kind": "body_image",
+   "path": "若葉/若葉_ポーズb_1_body.png",
+   "size": 20135560
+  },
+  {
+   "kind": "body_image",
+   "path": "若葉/若葉_ポーズb_3_body.png",
+   "size": 3578203
+  },
+  {
+   "kind": "body_image",
+   "path": "葵/葵_ポーズa_1_body.png",
+   "size": 14300878
+  },
+  {
+   "kind": "body_image",
+   "path": "葵/葵_ポーズa_3_body.png",
+   "size": 3500744
+  },
+  {
+   "kind": "body_image",
+   "path": "葵/葵_ポーズＢ_1_body.png",
+   "size": 13995233
+  },
+  {
+   "kind": "body_image",
+   "path": "葵/葵_ポーズＢ_3_body.png",
+   "size": 113704
+  },
+  {
+   "kind": "body_image",
+   "path": "蘇芳/蘇芳_ポーズＡ_1_body.png",
+   "size": 446201
+  },
+  {
+   "kind": "body_image",
+   "path": "蘇芳/蘇芳_ポーズＡ_3_body.png",
+   "size": 2208073
+  },
+  {
+   "kind": "body_image",
+   "path": "蘇芳/蘇芳_ポーズＢ_1_body.png",
+   "size": 8802696
+  },
+  {
+   "kind": "body_image",
+   "path": "蘇芳/蘇芳_ポーズＢ_3_body.png",
+   "size": 287578
+  },
+  {
+   "kind": "body_image",
+   "path": "虎太郎/虎太郎_ポーズa_1_body.png",
+   "size": 1143315
+  },
+  {
+   "kind": "body_image",
+   "path": "虎太郎/虎太郎_ポーズa_3_body.png",
+   "size": 78619
+  },
+  {
+   "kind": "body_image",
+   "path": "虎太郎/虎太郎_腕差分_ポーズa_1_body.png",
+   "size": 8376948
+  },
+  {
+   "kind": "body_image",
+   "path": "虎太郎/虎太郎_腕差分_ポーズa_3_body.png",
+   "size": 88954
+  }
+ ]
+}

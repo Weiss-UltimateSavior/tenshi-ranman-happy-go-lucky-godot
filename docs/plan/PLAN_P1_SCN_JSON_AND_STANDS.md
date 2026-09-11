@@ -165,13 +165,13 @@ godot assets 的 `assets/fgimage/<角色>/<prefix>_<变体>.pbd` 中,60 个是
 
 ### 2.2 动作
 
-1. [ ] 从原版归档提取 64 个 TJS/4s0 元数据到
+1. [x] 从原版归档提取 64 个 TJS/4s0 元数据到
        `assets/fgimage/pbd_meta/<角色>/<prefix>_<变体>.pbd`(保留原始字节,不做转换)
-2. [ ] 把 60 个 TLG 整身合成图从 `.pbd` 名位移出:转换为 PNG 后存为
+2. [x] 把 60 个 TLG 整身合成图从 `.pbd` 名位移出:转换为 PNG 后存为
        `assets/fgimage/<角色>/<prefix>_<变体>_body.png`
        (用本地 `tools/tlg2png/tlg2png`;转换后校验尺寸/非空)
-3. [ ] 在 `docs/` 记录该资产错配(来源、影响、归位规则),避免后续再被误当元数据
-4. [ ] 更新 `.gitignore` 说明:`pbd_meta/` 体积小(合计约 200KB)可考虑
+3. [x] 在 `docs/` 记录该资产错配(来源、影响、归位规则),避免后续再被误当元数据
+4. [x] 更新 `.gitignore` 说明:`pbd_meta/` 体积小(合计约 200KB)可考虑
        `git add -f` 入库分发;`*_body.png` 属大图,留在本地素材层
 
 ### 2.3 与立绘渲染的关系
@@ -185,6 +185,27 @@ godot assets 的 `assets/fgimage/<角色>/<prefix>_<变体>.pbd` 中,60 个是
 ### 2.4 工作量
 
 0.5 天(提取 + 批量 TLG→PNG + 文档)。
+
+### 2.5 完成记录(2026-09-10)
+
+**结果**:64 个 TJS/4s0 元数据归位到 `assets/fgimage/pbd_meta/<角色>/`
+(197 KB),60 张整身合成图转为 `assets/fgimage/<角色>/<name>_body.png`
+(323 MB);60 个误置的 TLG `.pbd` 已从角色目录移除,仅保留まひろ 4 个原位
+真元数据。逐文件清单:`docs/fgimage_relocation_manifest.json`(含 sha256 前
+16 位);成因/影响/归位规则/后续三路线:`docs/fgimage_relocation.md`。
+
+**验证**:归位后跑 `qa_story_map_route`(选择链路)与 st01_02 立绘场景冒烟
+(推进 30 句),均 PASS,无 `stand` 解析错误。
+
+**发现并修正的问题**:初次转换只生成了 `_body.png` 而未移除原误置文件,导致
+角色目录下 `.pbd` 同时存在两套内容;已按"确认 `_body.png` 存在后再删"的
+规则清理 60 个,避免误删。
+
+**入库策略**:`pbd_meta/`(197 KB)可 `git add -f` 入库分发;`*_body.png`
+(323 MB)属大图,留在本地素材层(`assets/` 本就在 .gitignore 内)。
+
+**下一步**:§3 的 Windows 批次(A: 2 个加密 scn;B: 64 个 PBD → JSON),
+或走 §3.2 降级立绘(整身图已在位)。
 
 ## 3. 项目三:Windows 一次性补缺 + 降级路线决策
 
@@ -242,3 +263,58 @@ Windows 侧 0.5 小时操作 + 回传验证 0.5 天;降级路线实现 1 天。
 4. Windows 批次(若执行):`0429_sel` 分支落点可继续播放,立绘按 PBD 精确合成;
    两条既有轨迹基线保持全绿
 5. 文档更新:`MIGRATION_TASKS.md` 阶段 5/6 勾选、本计划勾选、素材错配说明落档
+
+---
+
+## 6. B 批完成记录(2026-09-10):本地 PBD 解码器
+
+**结论:§3 的 B 批已完全本地化,不再需要 Windows。**
+
+### 交付物
+
+- `tools/pbd_to_json.py`(纯 Python 3,零依赖)——PBD 容器 → 立绘图层表 JSON
+- `tools/qa_stand_render.gd`——立绘合成回归(断言部件已贴图)
+- `assets/fgimage/<角色>/<prefix>_<变体>.pbd.json`——68 个产物(64 归位元数据 + 4 原位),
+  直接命中 `story_player._stand_pbd_layers()` 的候选路径 3
+
+### 格式要点(全部从 GalgameReverse 参考实现核实)
+
+容器头 16 字节:`magic "TJS/"` + `check "4s0 "`(第 1 字节是压缩选择器
+`{0x6E,0x34}`)+ `seed(u32)` + `cryptoMode(u16)` + `ivLen(u16)`。
+
+三层解码:
+
+1. **变体 ChaCha20**:`CryptoSmallTable` 是**公开常量**(16B,所有柚子社游戏共用);
+   密钥由**自定义 20 轮哈希**(参考源码名为 `PbdSHA256`,实为 BLAKE2s 风格构造:
+   SHA-256 IV + 盐 XOR + BLAKE2s G 函数 + 硬编码消息字置换表)派生;state =
+   smallTable ‖ ~key ‖ ~s1,~s2,~s3,~s4;每 1024 字节刷新,块内扩展自引用。
+2. **LZ4 块**(u16 长度前缀):匹配可回退到前一块输出作字典;offset 超出时
+   读取零填充目标(K4os 语义)。
+3. **TJS 变体二进制**:类型码 0x00/01/02/03/04/05/81/C1,每个类型字节后跟一个
+   由种子派生的**校验字节**;种子由 `seed` 经 `s[0]^=s[3]; s[3]=0` 初始化。
+
+### 验证
+
+- **黄金标准比对**:用 .NET 参考实现(`PbdDecoder`)解出同一文件,
+  与 `pbd_to_json.py` 输出**逐字段一致(EXACT MATCH,44 层)**;
+  中间值(密钥 `83E53FA4...`、解密流、解压流)逐字节一致
+- 立绘渲染:`qa_stand_render` PASS(3 部件,画布 3750×5314)
+- 双轨迹基线冷启动通过(opening 32 帧 / branch 201 帧)
+
+### 顺带修复的两个既有缺陷
+
+1. **`OS.execute` 需要绝对路径**:上一轮 assets 根迁移后 `RESTORED_ROOT`
+   变为 `res://assets`,而 worker 直接把 `res://` URI 传给转换器导致静默失败。
+   新增 `_external_path()` 统一 globalize。
+2. **轨迹基线依赖缓存温度**:立绘部件异步转换使同一路线两次录制不同。
+   导出/校验脚本现在先强制预热(等各角色目录的 `.complete`)再录制;
+   同时把 `active_sounds`(SE 播放状态)加入轨迹对比的忽略列表——它与
+   `bgm_playing`/`voice_playing` 同属墙钟状态。
+
+### A 批状态(仍可选)
+
+`0429_sel.ks`/`0604_sel.ks` 的**日文原版**加密需引擎解密(Windows);
+本地已有的 `assets/tenshin_chs/` 明文副本是**中文翻译**,
+`psb_to_json.py` 可直接解出(结构完整、含全部 4 个分支标签),
+取舍是"中文文本 vs 等 Windows"。`re_0604_sel.ks.scn` 同样是明文可解的
+(不在 35 个跳转目标内,属额外收获)。

@@ -32,6 +32,11 @@ func _initialize() -> void:
 		quit(1)
 		return
 	story.set_trace_instant_mode(true)
+	# Stand parts are converted to PNG on demand by the preload worker. A cold
+	# cache would make the first frames lack characters, so wait for the route's
+	# characters to be available before recording — the baseline must not
+	# depend on cache temperature.
+	await _warm_stand_cache(story, storage)
 	story.start(storage, target)
 	await process_frame
 	var frames: Array = []
@@ -93,6 +98,89 @@ func _user_args() -> Dictionary:
 		if eq >= 0:
 			result[body.substr(0, eq)] = body.substr(eq + 1)
 	return result
+
+
+func _warm_stand_cache(story: Node, storage: String) -> void:
+	# Scan the scenario for `.stand` character names and convert their part
+	# directories up front. This mirrors what a player session does lazily.
+	var characters := _stand_characters(story, storage)
+	if characters.is_empty():
+		return
+	for character in characters:
+		story._queue_stand_directory_preload(str(character), true)
+	# Wait until each character's converted part count covers its source TLG
+	# count. The `.complete` marker alone is not enough: an earlier failed run
+	# can leave a stale marker with no (or the wrong) PNGs behind it.
+	var deadline := 300.0
+	var elapsed := 0.0
+	while elapsed < deadline:
+		await create_timer(0.5).timeout
+		elapsed += 0.5
+		var all_ready := true
+		for character in characters:
+			if not _stand_cache_ready(str(character)):
+				all_ready = false
+				break
+		if all_ready:
+			break
+	await create_timer(1.0).timeout
+
+
+func _stand_cache_ready(character: String) -> bool:
+	var source_dir := ProjectSettings.globalize_path("res://assets/fgimage/" + character)
+	var cache_dir := ProjectSettings.globalize_path("user://godot_cache/fgimage/" + character)
+	if not DirAccess.dir_exists_absolute(source_dir):
+		return true
+	var source_count := _count_files(source_dir, ".tlg")
+	if source_count == 0:
+		return true
+	return _count_files(cache_dir, ".png") >= source_count
+
+
+func _count_files(dir_path: String, suffix: String) -> int:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return 0
+	var count := 0
+	dir.list_dir_begin()
+	while true:
+		var file_name := dir.get_next()
+		if file_name == "":
+			break
+		if not dir.current_is_dir() and file_name.ends_with(suffix):
+			count += 1
+	dir.list_dir_end()
+	return count
+
+
+func _stand_characters(story: Node, storage: String) -> Array:
+	var names: Array = []
+	var json_path := "res://assets/scn/" + storage.trim_suffix(".scn") + ".json"
+	if not FileAccess.file_exists(json_path):
+		json_path = "res://assets/scn/" + storage + ".json"
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(json_path))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return names
+	for scene in Dictionary(parsed).get("scenes", []):
+		if typeof(scene) != TYPE_DICTIONARY:
+			continue
+		for entry in Dictionary(scene).get("texts", []):
+			if typeof(entry) != TYPE_ARRAY or Array(entry).size() < 5:
+				continue
+			var state: Variant = Array(entry)[4]
+			if typeof(state) != TYPE_DICTIONARY:
+				continue
+			for item in Dictionary(state).get("data", []):
+				if typeof(item) != TYPE_ARRAY or Array(item).size() < 3:
+					continue
+				var object: Dictionary = Dictionary(Array(item)[2])
+				var file_name := str(Dictionary(object.get("redraw", {})).get("imageFile", {}).get("file", ""))
+				if not file_name.to_lower().ends_with(".stand"):
+					continue
+				var character := str(Array(item)[0])
+				if character != "" and not names.has(character):
+					names.append(character)
+	return names
 
 
 func _find_story(main_scene: Node) -> Node:
