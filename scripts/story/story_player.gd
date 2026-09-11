@@ -1896,15 +1896,60 @@ func _queue_stand_preload(character_name: String, image_name: String, image_file
 			_queue_preload_job({"type": "tlg", "source": paths["source"], "target": paths["target"], "output_dir": paths["output_dir"]})
 
 
-func _queue_stand_directory_preload(character_name: String) -> void:
+func _queue_stand_directory_preload(character_name: String, force: bool = false) -> void:
 	if character_name == "":
 		return
 	var source_dir := RESTORED_ROOT + "/fgimage/" + character_name
 	var output_dir := CACHE_ROOT + "/fgimage/" + character_name
-	if FileAccess.file_exists(output_dir + "/.complete"):
+	if not force and _stand_cache_is_complete(character_name):
 		return
-	if DirAccess.dir_exists_absolute(source_dir):
+	if _dir_exists_absolute(source_dir):
+		if force or FileAccess.file_exists(output_dir + "/.complete"):
+			# Re-queue after an earlier attempt that left a partial or stale
+			# cache: the marker alone cannot prove the parts exist.
+			var key := "tlg_dir:" + source_dir
+			preload_mutex.lock()
+			preload_enqueued.erase(key)
+			preload_mutex.unlock()
 		_queue_preload_job({"type": "tlg_dir", "source_dir": source_dir, "output_dir": output_dir})
+
+
+## A cache directory counts as complete only when its marker exists AND the
+## converted part count covers the source directory — a marker written before
+## the converter was available must not short-circuit a later, correct run.
+func _stand_cache_is_complete(character_name: String) -> bool:
+	var output_dir := CACHE_ROOT + "/fgimage/" + character_name
+	if not FileAccess.file_exists(output_dir + "/.complete"):
+		return false
+	var cached := _count_files_with_extension(output_dir, ".png")
+	if cached <= 0:
+		return false
+	var source_abs := _external_path(RESTORED_ROOT + "/fgimage/" + character_name)
+	if source_abs == "" or not DirAccess.dir_exists_absolute(source_abs):
+		return true
+	return cached >= _count_files_with_extension(source_abs, ".tlg")
+
+
+func _count_files_with_extension(path: String, extension: String) -> int:
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return 0
+	var count := 0
+	dir.list_dir_begin()
+	while true:
+		var file_name := dir.get_next()
+		if file_name == "":
+			break
+		if not dir.current_is_dir() and file_name.ends_with(extension):
+			count += 1
+	dir.list_dir_end()
+	return count
+
+
+## Resolve a project or absolute directory for the *Absolute DirAccess APIs.
+func _dir_exists_absolute(path: String) -> bool:
+	var resolved := _external_path(path)
+	return resolved != "" and DirAccess.dir_exists_absolute(resolved)
 
 
 func _apply_bgm(object: Dictionary) -> void:
@@ -3761,6 +3806,17 @@ func _stand_part_paths(character_name: String, prefix: String, dress_index: int,
 	return {"source": source, "output_dir": output_dir, "target": target}
 
 
+func _external_path(path: String) -> String:
+	# The preload worker shells out to the TLG converter, which needs a real
+	# filesystem path. Project resources arrive as res:// URIs after the
+	# assets root moved into the project, so resolve them here.
+	if path == "":
+		return ""
+	if path.begins_with("res://") or path.begins_with("user://"):
+		return ProjectSettings.globalize_path(path)
+	return path
+
+
 func _tlg2png_path() -> String:
 	# Each developer keeps their own converter: the historical Windows exe in
 	# the Codex workspace, or the built native binary from tools/tlg2png.
@@ -3869,10 +3925,13 @@ func _process_preload_job(job: Dictionary) -> void:
 			var source_dir := str(job.get("source_dir", ""))
 			var output_dir := str(job.get("output_dir", ""))
 			var converter := _tlg2png_path()
-			if source_dir != "" and output_dir != "" and DirAccess.dir_exists_absolute(source_dir) and converter != "":
-				DirAccess.make_dir_recursive_absolute(output_dir)
-				OS.execute(converter, [source_dir, output_dir], [])
-				var marker := FileAccess.open(output_dir + "/.complete", FileAccess.WRITE)
+			var source_abs := _external_path(source_dir)
+			var output_abs := _external_path(output_dir)
+			if source_abs != "" and output_abs != "" \
+					and DirAccess.dir_exists_absolute(source_abs) and converter != "":
+				DirAccess.make_dir_recursive_absolute(output_abs)
+				OS.execute(converter, [source_abs, output_abs], [])
+				var marker := FileAccess.open(output_abs + "/.complete", FileAccess.WRITE)
 				if marker != null:
 					marker.store_string(Time.get_datetime_string_from_system())
 		"tlg":
@@ -3887,9 +3946,13 @@ func _process_preload_job(job: Dictionary) -> void:
 			if FileAccess.file_exists(target):
 				DirAccess.remove_absolute(target)
 			var tlg_converter := _tlg2png_path()
-			if source != "" and output_dir != "" and tlg_converter != "":
-				DirAccess.make_dir_recursive_absolute(output_dir)
-				OS.execute(tlg_converter, [source, output_dir], [])
+			# OS.execute and *Absolute APIs need real filesystem paths: the job
+			# carries res:// URIs after the assets-root migration.
+			var tlg_source := _external_path(source)
+			var tlg_output := _external_path(output_dir)
+			if tlg_source != "" and tlg_output != "" and tlg_converter != "":
+				DirAccess.make_dir_recursive_absolute(tlg_output)
+				OS.execute(tlg_converter, [tlg_source, tlg_output], [])
 			if _is_ready_file(target):
 				_queue_preload_job({"type": "image", "path": target})
 		"image":

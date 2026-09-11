@@ -137,9 +137,16 @@ static int png_write(const char *path, int width, int height, const uint8_t *rgb
 			block_counted = 0;
 		}
 		EMIT_BYTE(0); /* filter None */
-		for (size_t x = 0; x < (size_t)width * 4; x++)
-			EMIT_BYTE(src[x]);
-		src += (size_t)width * 4;
+		/* TLG decoders produce ARGB dwords (krkrz canonical), which on
+		 * little-endian hosts are stored as B,G,R,A bytes. PNG wants
+		 * R,G,B,A, so swap the first and third byte of every pixel. */
+		for (int x = 0; x < width; x++) {
+			EMIT_BYTE(src[2]);   /* R */
+			EMIT_BYTE(src[1]);   /* G */
+			EMIT_BYTE(src[0]);   /* B */
+			EMIT_BYTE(src[3]);   /* A */
+			src += 4;
+		}
 		block_counted += stride;
 		/* Close the block if the next row would overflow it. */
 		if (block_counted + stride > max_block) {

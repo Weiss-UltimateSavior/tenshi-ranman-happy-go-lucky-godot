@@ -106,6 +106,9 @@ class PsbArray:
 
     Layout (FreeMote.Psb.PsbArray): width-byte count, then one byte for the
     entry width (`byte - NumberN8`), then count * entry-width LE values.
+    Some writers (the Chinese-localization PSB tooling) encode EMPTY arrays
+    with entry width 0 (`0d 00 0c`); FreeMote tolerates that by reading
+    `entryLen * count == 0` bytes, so this decoder mirrors it.
     """
 
     def __init__(self, reader: Reader, width: int):
@@ -114,9 +117,13 @@ class PsbArray:
         self.width = width
         self.count = unpack_uint(reader.read(width))
         entry_len = reader.u8() - T_NUMBER_N8
-        if not 1 <= entry_len <= MAX_ARRAY_WIDTH:
+        if not 0 <= entry_len <= MAX_ARRAY_WIDTH:
             raise PsbError(f"invalid array entry length {entry_len}")
         self.entry_length = entry_len
+        if entry_len == 0:
+            # Empty-array encoding: no payload bytes at all.
+            self.values = [0] * self.count
+            return
         blob = reader.read(entry_len * self.count)
         self.values = [
             int.from_bytes(blob[i * entry_len:(i + 1) * entry_len], "little")

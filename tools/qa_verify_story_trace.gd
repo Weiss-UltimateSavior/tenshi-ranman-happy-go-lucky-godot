@@ -36,6 +36,9 @@ func _initialize() -> void:
 		_fail("Could not create StoryPlayer for trace verification")
 		return
 	story.set_trace_instant_mode(true)
+	# Match the exporter's cache warm-up so character layers are present the
+	# same way in both runs (see qa_export_story_trace.gd).
+	await _warm_stand_cache(story, storage)
 	story.start(storage, target)
 	await process_frame
 	var injected := false
@@ -55,6 +58,81 @@ func _initialize() -> void:
 	quit(0)
 
 
+func _warm_stand_cache(story: Node, storage: String) -> void:
+	# Convert every `.stand` character's part directory up front so the trace
+	# does not depend on cache temperature (shared logic with the exporter).
+	var names: Array = []
+	var json_path := "res://assets/scn/" + storage + ".json"
+	if not FileAccess.file_exists(json_path):
+		json_path = "res://assets/scn/" + storage.trim_suffix(".scn") + ".json"
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(json_path))
+	if typeof(parsed) == TYPE_DICTIONARY:
+		for scene in Dictionary(parsed).get("scenes", []):
+			if typeof(scene) != TYPE_DICTIONARY:
+				continue
+			for entry in Dictionary(scene).get("texts", []):
+				if typeof(entry) != TYPE_ARRAY or Array(entry).size() < 5:
+					continue
+				var state: Variant = Array(entry)[4]
+				if typeof(state) != TYPE_DICTIONARY:
+					continue
+				for item in Dictionary(state).get("data", []):
+					if typeof(item) != TYPE_ARRAY or Array(item).size() < 3:
+						continue
+					var object: Dictionary = Dictionary(Array(item)[2])
+					var file_name := str(Dictionary(object.get("redraw", {})).get("imageFile", {}).get("file", ""))
+					if not file_name.to_lower().ends_with(".stand"):
+						continue
+					var character := str(Array(item)[0])
+					if character != "" and not names.has(character):
+						names.append(character)
+	for character in names:
+		story._queue_stand_directory_preload(str(character), true)
+	# Wait until each character's converted part count covers its source TLG
+	# count. The `.complete` marker alone is not enough: an earlier failed run
+	# can leave a stale marker with no (or the wrong) PNGs behind it.
+	var deadline := 300.0
+	var elapsed := 0.0
+	while elapsed < deadline:
+		await create_timer(0.5).timeout
+		elapsed += 0.5
+		var all_ready := true
+		for character in names:
+			if not _stand_cache_ready(str(character)):
+				all_ready = false
+				break
+		if all_ready:
+			break
+	await create_timer(1.0).timeout
+
+
+func _stand_cache_ready(character: String) -> bool:
+	var source_dir := ProjectSettings.globalize_path("res://assets/fgimage/" + character)
+	var cache_dir := ProjectSettings.globalize_path("user://godot_cache/fgimage/" + character)
+	if not DirAccess.dir_exists_absolute(source_dir):
+		return true
+	var source_count := _count_files(source_dir, ".tlg")
+	if source_count == 0:
+		return true
+	return _count_files(cache_dir, ".png") >= source_count
+
+
+func _count_files(dir_path: String, suffix: String) -> int:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return 0
+	var count := 0
+	dir.list_dir_begin()
+	while true:
+		var file_name := dir.get_next()
+		if file_name == "":
+			break
+		if not dir.current_is_dir() and file_name.ends_with(suffix):
+			count += 1
+	dir.list_dir_end()
+	return count
+
+
 func _same_frame(expected: Dictionary, actual: Dictionary) -> bool:
 	# Playback state can differ by one audio processing frame. The resource and
 	# command identities are deterministic, while AudioStreamPlayer.playing is
@@ -64,8 +142,12 @@ func _same_frame(expected: Dictionary, actual: Dictionary) -> bool:
 
 func _comparable_frame(frame: Dictionary) -> Dictionary:
 	var audio: Dictionary = Dictionary(frame.get("audio", {})).duplicate(true)
+	# Wall-clock playback state is deliberately excluded: one-frame audio
+	# processing differences must not fail a structural trace. Resource and
+	# command identities (paths, voice names) are still compared.
 	audio.erase("bgm_playing")
 	audio.erase("voice_playing")
+	audio.erase("active_sounds")
 	var result := frame.duplicate(true)
 	result.erase("sequence")
 	result["audio"] = audio
